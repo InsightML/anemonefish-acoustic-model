@@ -1,0 +1,8 @@
+# Core dependencies
+appwrite==7.1.0
+python-dotenv==1.0.1
+
+# Optional dependencies that appear to be used in the project
+# pandas==2.0.0  # Uncomment if needed
+
+# Add other project dependencies as needed

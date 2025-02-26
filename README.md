@@ -30,3 +30,14 @@ Log files generated during project execution.
 ## results/
 Output results, including plots, evaluation metrics, and reports.
 # anemonefish-acoustic-model
+
+## Installation
+
+To install the package in development mode:
+
+1. Clone the repository
+2. Navigate to the project directory
+3. Run:
+```bash
+pip install -e .
+```

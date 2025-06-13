@@ -1,0 +1,94 @@
+augmentation:
+  augmentation_factor: 3
+  frequency_mask:
+    enabled: true
+    fmax: 1800
+    fmin: 75
+    max_mask_width: 50
+    n_masks: 1
+  pitch_shift:
+    enabled: true
+    n_steps_range:
+    - -3.0
+    - 3.0
+  simulate_multipath:
+    decay_factor_range:
+    - 0.2
+    - 0.5
+    delay_range:
+    - 0.005
+    - 0.02
+    enabled: true
+    n_reflections_range:
+    - 1
+    - 3
+  time_mask:
+    enabled: true
+    mask_ratio_range:
+    - 0.05
+    - 0.15
+    n_masks: 1
+  time_shift:
+    enabled: true
+    shift_range:
+    - -0.25
+    - 0.25
+  time_stretch:
+    enabled: true
+    rate_range:
+    - 0.8
+    - 1.2
+  use_augmentation: true
+  use_noise_addition: true
+  volume_perturbation:
+    enabled: true
+    gain_range:
+    - 0.7
+    - 1.3
+data:
+  augmented_dir: data/augmented_wavs
+  balance_ratio: 1.0
+  cache_dir: data/cache
+  noise_chunked_dir: data/noise_chunked
+  noise_dir: data/noise
+  processed_wavs_dir: data/processed_wavs
+  random_state: 42
+  sample_rate: 8000
+  test_size: 0.2
+  validation_size: 0.15
+mlflow:
+  experiment_name: binary_classifier
+  tracking_uri: mlruns
+  use_mlflow: false
+model:
+  conv_channels:
+  - 16
+  - 32
+  - 64
+  fc_sizes:
+  - 128
+  freq_bins: 64
+  input_channels: 1
+output:
+  checkpoints_dir: checkpoints
+  experiment_name: binary_classifier
+  log_dir: logs/experiments
+  log_level: INFO
+  save_best_only: true
+  visualize_data: true
+  visualize_model: true
+preprocessing:
+  feature_type: spectrogram
+  fmax: 2000.0
+  fmin: 0.0
+  frame_length: 2048
+  hop_length: 512
+  n_fft: 2048
+  n_mfcc: 14
+training:
+  batch_size: 32
+  device: cuda
+  early_stopping_patience: 5
+  learning_rate: 0.001
+  num_epochs: 30
+  weight_decay: 0.0001

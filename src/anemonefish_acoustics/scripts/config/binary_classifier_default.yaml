@@ -1,0 +1,93 @@
+# Default configuration for anemonefish binary classifier training
+
+# Data settings
+data:
+  processed_wavs_dir: 'data/processed_wavs'
+  noise_dir: 'data/noise'
+  noise_chunked_dir: 'data/noise_chunked'
+  cache_dir: 'data/cache'
+  augmented_dir: 'data/augmented_wavs'
+  sample_rate: 8000
+  test_size: 0.2
+  validation_size: 0.15
+  random_state: 42
+  balance_ratio: 1.0
+
+# Preprocessing settings
+preprocessing:
+  feature_type: 'mel_spectrogram'  # Changed from 'spectrogram' to 'mel_spectrogram'
+  n_mfcc: 14
+  n_fft: 2048
+  hop_length: 512
+  fmin: 0.0
+  fmax: 2000.0
+  frame_length: 2048
+  standard_length_sec: 0.6  # Standard length for audio files in seconds
+  preprocess_method: 'crop_pad'  # Options: 'stretch_squash' or 'crop_pad'
+  sliding_window_hop: 0.2  # Hop size for sliding window in seconds (for crop_pad method)
+
+# Augmentation settings
+augmentation:
+  use_augmentation: true
+  augmentation_factor: 3
+  use_noise_addition: true
+  time_stretch:
+    enabled: true
+    rate_range: [0.8, 1.2]
+  pitch_shift:
+    enabled: true
+    n_steps_range: [-3.0, 3.0]
+  time_shift:
+    enabled: true
+    shift_range: [-0.25, 0.25]
+  volume_perturbation:
+    enabled: true
+    gain_range: [0.7, 1.3]
+  frequency_mask:
+    enabled: true
+    max_mask_width: 50
+    n_masks: 1
+    fmin: 75
+    fmax: 1800
+  time_mask:
+    enabled: true
+    mask_ratio_range: [0.05, 0.15]
+    n_masks: 1
+  simulate_multipath:
+    enabled: true
+    n_reflections_range: [1, 3]
+    delay_range: [0.005, 0.02]
+    decay_factor_range: [0.2, 0.5]
+
+# Model architecture settings
+model:
+  input_channels: 1
+  freq_bins: 64  # Changed from 14 to 64 to match mel spectrogram dimensions
+  conv_channels: [16, 32, 64]
+  fc_sizes: [128]
+
+# Training settings
+training:
+  batch_size: 16  # Reduced from 32 for testing
+  num_epochs: 2   # Reduced for faster testing
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  early_stopping_patience: 3  # Reduced from 5 for testing
+  device: 'cpu'  # Changed from 'cuda' to 'cpu' for testing
+
+# Logging and checkpoint settings
+output:
+  experiment_name: 'binary_classifier'
+  log_dir: 'logs/experiments'
+  checkpoints_dir: 'checkpoints'
+  save_best_only: true
+  visualize_data: true
+  visualize_preprocessing: true  # Added to enable new preprocessing visualization
+  visualize_model: true
+  log_level: 'INFO'
+
+# MLflow settings
+mlflow:
+  use_mlflow: false
+  tracking_uri: 'mlruns'
+  experiment_name: 'binary_classifier' 

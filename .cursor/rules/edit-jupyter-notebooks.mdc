@@ -1,0 +1,45 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Handling Jupyter Notebook (.ipynb) Edits (Workaround)
+
+Editing Jupyter Notebook (`.ipynb`) files directly using the `edit_file` tool is currently unreliable due to issues handling the complex JSON structure.
+
+**DO NOT use the `edit_file` tool to modify `.ipynb` files.**
+
+Instead, follow this workaround procedure:
+
+1.  **Identify Changes:** Determine the necessary modifications (e.g., adding new cells, changing existing cell content).
+2.  **Prepare Cell Content:** For each change, prepare the exact content (source code or markdown text) that should go into the cell.
+3.  **Provide Content and Instructions to User:**
+    *   Clearly state whether you are adding a new cell or modifying an existing one.
+    *   If modifying an existing cell, identify it clearly (e.g., "the third cell", "the code cell containing `import pandas`").
+    *   Provide the complete, final content for the cell in a format that the user can easily copy.
+    *   Give explicit instructions to the user on how to apply the change manually (e.g., "Create a new markdown cell below the current cell and paste the following content:", "Replace the entire content of the second code cell with the following Python code:").
+
+Example response format:
+
+
+Okay, I need to add a new code cell and modify an existing markdown cell.
+
+**1. New Code Cell:**
+   *   **Instruction:** Please create a new code cell *after* the cell containing `# Initial setup` and paste the following content into it:
+   *   **Content:**
+```python
+# New analysis step
+df = load_data('my_data.csv')
+print(df.head())
+```
+
+**2. Modify Existing Markdown Cell:**
+   *   **Instruction:** Please replace the entire content of the first markdown cell (currently titled `# Old Title`) with the following:
+   *   **Content:**
+```markdown
+# Updated Project Overview
+
+This notebook performs initial data exploration...
+```
+
+By following this workaround, you can assist the user in updating notebooks without risking file corruption from direct tool use.

@@ -69,17 +69,25 @@ def get_logger(name=None, level=logging.INFO, workspace_root=None):
         # Determine log subdirectory based on script location
         if 'scripts' in relative_path.parts:
             log_subdir = 'logs/scripts'
-        elif 'notebooks' in relative_path.parts:
+        elif 'notebooks' in relative_path.parts or caller_filename.endswith('.ipynb'):
             log_subdir = 'logs/notebooks'
         elif 'src' in relative_path.parts:
             log_subdir = 'logs/src'
         else:
-            log_subdir = 'logs/other'
+            # Check if this looks like a Jupyter notebook (numeric script name)
+            if script_name.isdigit():
+                log_subdir = 'logs/notebooks'
+            else:
+                log_subdir = 'logs/other'
             
     except ValueError:
         # If we can't determine relative path, use fallback
         script_name = Path(caller_filename).stem
-        log_subdir = 'logs/other'
+        # Check if this looks like a Jupyter notebook
+        if script_name.isdigit():
+            log_subdir = 'logs/notebooks'
+        else:
+            log_subdir = 'logs/other'
     
     # Use provided name or default to script name
     logger_name = name or script_name
@@ -88,8 +96,11 @@ def get_logger(name=None, level=logging.INFO, workspace_root=None):
     log_dir = workspace_root / log_subdir
     log_dir.mkdir(parents=True, exist_ok=True)
     
-    # Create log filename
-    log_filename = f"{script_name}.log"
+    # Create log filename - use name parameter if provided, otherwise script name
+    if name:
+        log_filename = f"{name}.log"
+    else:
+        log_filename = f"{script_name}.log"
     log_filepath = log_dir / log_filename
     
     # Get or create logger
@@ -125,7 +136,7 @@ def get_logger(name=None, level=logging.INFO, workspace_root=None):
     logger.addHandler(console_handler)
     
     # Log the setup info
-    logger.info(f"Logger initialized for {script_name}")
+    logger.info(f"Logger initialized for {logger_name}")
     logger.info(f"Log file: {log_filepath}")
     
     return logger

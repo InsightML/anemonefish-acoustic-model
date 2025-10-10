@@ -1,12 +1,12 @@
 # %% [markdown]
 # # 4. Generate Spectrograms from Unlabelled Long Audio Files
 # 
-# This notebook processes a directory of long WAV audio files. For each audio file, it performs the following steps:
-# 1.  Splits the long audio file into short, 1-second segments.
-# 2.  For each 1-second audio segment, it generates a spectrogram image.
-# 3.  Saves these spectrogram images to a specified output directory.
+# This notebook processes multiple datasets of unlabelled long WAV audio files. It iterates through all subdirectories in the unlabelled data folder (e.g., `20230208_First_B48_24h_audio_R`, etc.), and for each audio file in each dataset, it performs the following steps:
+# 1.  Splits the long audio file into short, 0.4-second segments (aligned with training pipeline).
+# 2.  For each 0.4-second audio segment, it generates a spectrogram image using native sample rates.
+# 3.  Saves these spectrogram images to a specified output directory, organized by dataset and original file names.
 # 
-# This is useful for preparing unlabelled audio data for further analysis or model training where spectrograms of fixed-length audio chunks are required. The spectrogram generation parameters (like frequency range and FFT settings) are configurable.
+# This is useful for preparing multiple unlabelled audio datasets for further analysis or model training where spectrograms of fixed-length audio chunks are required. The spectrogram generation parameters are aligned with the training pipeline (`scripts/generate_training_audio.py`) for consistency across the codebase.
 
 # %% [markdown]
 # ## 1. Setup and Imports
@@ -33,10 +33,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # 
 # Define the input and output directories, and parameters for chunking and spectrogram generation.
 # 
-# - `INPUT_AUDIO_DIR`: Path to the directory containing your long `.wav` audio files.
-# - `OUTPUT_SPECTROGRAM_DIR`: Path to the directory where generated spectrogram images will be saved. Spectrograms for each input WAV file will be stored in a subdirectory named after the original WAV file. A temporary directory `temp_chunks_for_spectrograms` will be created here during processing and should be removed afterwards.
-# - `CHUNK_DURATION_SECONDS`: Duration of each audio chunk to be converted into a spectrogram (fixed at 1.0 second for this notebook's purpose).
-# - `SR_TARGET_SPECTROGRAM`: Target sampling rate (in Hz) to which the 1-second audio chunks will be resampled *during spectrogram generation by `librosa.load`*. This ensures consistency in the spectrograms. Set to `None` to use the native sample rate of the chunk when `librosa.load` reads it (though consistency via a target SR is recommended).
+# **Note: Configuration parameters are aligned with the training pipeline (`scripts/generate_training_audio.py`) for consistency across the codebase.**
+# 
+# - `INPUT_UNLABELLED_BASE_DIR`: Path to the base directory containing subdirectories with unlabelled audio datasets. Each subdirectory (e.g., `20230208_First_B48_24h_audio_R`) should contain `.wav` audio files and will be processed separately.
+# - `OUTPUT_SPECTROGRAM_DIR`: Path to the directory where generated spectrogram images will be saved. Spectrograms will be organized by dataset and original WAV file names. A temporary directory `temp_chunks_for_spectrograms` will be created here during processing and should be removed afterwards.
+# - `WINDOW_SIZE_SECONDS`: Duration of each audio window to be converted into a spectrogram (0.4 seconds, matching the training script).
+# - `SR_TARGET_SPECTROGRAM`: Target sampling rate for spectrogram generation. Set to `None` to use the native sample rate of each audio file (aligned with training pipeline). This preserves original audio quality and avoids unnecessary resampling artifacts.
 # - `FMAX_HZ`: Maximum frequency (in Hz) to display on the spectrogram (e.g., 2000 Hz for anemonefish calls).
 # - `N_FFT`: FFT window size. Affects frequency resolution.
 # - `HOP_LENGTH`: Hop length for STFT. Affects time resolution. Typically `N_FFT // 4` or `N_FFT // 2`.
@@ -46,49 +48,59 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # !!! IMPORTANT: Adjust these paths and parameters as needed !!!
 WORKSPACE_BASE_PATH = Path('/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics') # Adjust if your workspace is different
 
-# EXAMPLE: Point to a dir with a few long WAVs for testing. 
-# If this directory is empty, a dummy 10s WAV file will be created for testing purposes.
-INPUT_AUDIO_DIR = WORKSPACE_BASE_PATH / 'data' / 'unlabelled' / '20230208_First_B48_24h_audio_R' 
+# Base directory containing subdirectories with unlabelled audio files
+# Each subdirectory (e.g., '20230208_First_B48_24h_audio_R') will be processed separately
+INPUT_UNLABELLED_BASE_DIR = WORKSPACE_BASE_PATH / 'data' / 'unlabelled'
 OUTPUT_SPECTROGRAM_DIR = WORKSPACE_BASE_PATH / 'data' / 'unlabelled_spectrograms'
 
-CHUNK_DURATION_SECONDS = 1.0  # Duration of each chunk in seconds
+# Audio window parameters - aligned with training pipeline (scripts/generate_training_audio.py)
+WINDOW_SIZE_SECONDS = 0.4  # Duration of each audio window in seconds (matches training script)
 
-# Spectrogram Parameters (values often taken from successful experiments or common practices)
-SR_TARGET_SPECTROGRAM = 8000  # Target SR for spectrogram. e.g., 2 * FMAX_HZ.
+# Spectrogram Parameters 
+# NOTE: These parameters are aligned with the training pipeline for consistency:
+# - SR_TARGET_SPECTROGRAM = None uses native sample rate (same as training script)
+# - This preserves original audio quality and avoids unnecessary resampling artifacts
+# - FMAX_HZ and FFT parameters remain optimized for anemonefish call detection
+SR_TARGET_SPECTROGRAM = None  # Use native sample rate (aligned with training pipeline)
 FMAX_HZ = 2000      # Max frequency for the calls of interest
 N_FFT = 1024        # FFT window size
 HOP_LENGTH = N_FFT // 4 # Hop length, typically 1/4 of N_FFT
 
 # --- End Configuration ---
 
-# Ensure INPUT_AUDIO_DIR exists, create if not (for dummy file)
-INPUT_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+# Ensure base input directory exists
+INPUT_UNLABELLED_BASE_DIR.mkdir(parents=True, exist_ok=True)
 # Create output directory if it doesn't exist
 OUTPUT_SPECTROGRAM_DIR.mkdir(parents=True, exist_ok=True)
 
-logging.info(f"Input Audio Directory: {INPUT_AUDIO_DIR.resolve()}")
+logging.info(f"Input Unlabelled Base Directory: {INPUT_UNLABELLED_BASE_DIR.resolve()}")
 logging.info(f"Output Spectrogram Directory: {OUTPUT_SPECTROGRAM_DIR.resolve()}")
-logging.info(f"Chunk Duration: {CHUNK_DURATION_SECONDS}s")
-logging.info(f"Spectrogram Target SR: {SR_TARGET_SPECTROGRAM} Hz")
+logging.info(f"Window Size: {WINDOW_SIZE_SECONDS}s (aligned with training pipeline)")
+logging.info(f"Spectrogram Target SR: {'Native (no resampling)' if SR_TARGET_SPECTROGRAM is None else f'{SR_TARGET_SPECTROGRAM} Hz'}")
 logging.info(f"Spectrogram Fmax: {FMAX_HZ} Hz")
 logging.info(f"Spectrogram N_FFT: {N_FFT}")
 logging.info(f"Spectrogram Hop Length: {HOP_LENGTH}")
 
-if not INPUT_AUDIO_DIR.is_dir(): # Path.exists() is implicitly checked by is_dir()
-    logging.critical(f"CRITICAL: Input audio directory {INPUT_AUDIO_DIR} could not be confirmed as a directory. Please check the path.")
+if not INPUT_UNLABELLED_BASE_DIR.is_dir():
+    logging.critical(f"CRITICAL: Input unlabelled base directory {INPUT_UNLABELLED_BASE_DIR} could not be confirmed as a directory. Please check the path.")
 else:
-    # Check if any .wav files exist to prevent creating dummy if user has data
-    if not list(INPUT_AUDIO_DIR.glob('*.wav')) and not list(INPUT_AUDIO_DIR.glob('*.WAV')):
-        logging.warning(f"Input audio directory {INPUT_AUDIO_DIR} is empty. Creating a dummy test WAV file for demonstration.")
-        dummy_wav_path = INPUT_AUDIO_DIR / 'dummy_test_audio_10s.wav'
+    # Find all subdirectories in the unlabelled base directory
+    subdirs = [d for d in INPUT_UNLABELLED_BASE_DIR.iterdir() if d.is_dir() and not d.name.startswith('.')]
+    if subdirs:
+        logging.info(f"Found {len(subdirs)} subdirectories to process: {[d.name for d in subdirs]}")
+    else:
+        logging.warning(f"No subdirectories found in {INPUT_UNLABELLED_BASE_DIR}. Creating a dummy directory with test WAV file for demonstration.")
+        dummy_dir = INPUT_UNLABELLED_BASE_DIR / 'dummy_test_dataset'
+        dummy_dir.mkdir(exist_ok=True)
+        dummy_wav_path = dummy_dir / 'dummy_test_audio_10s.wav'
         try:
             sr_dummy = 44100; duration_dummy = 10; frequency_dummy = 440
             t_dummy = np.linspace(0, duration_dummy, int(sr_dummy * duration_dummy), False)
             audio_dummy = 0.5 * np.sin(2 * np.pi * frequency_dummy * t_dummy)
             sf.write(str(dummy_wav_path), audio_dummy, sr_dummy)
-            logging.info(f"Created dummy WAV file: {dummy_wav_path}")
+            logging.info(f"Created dummy directory and WAV file: {dummy_wav_path}")
         except Exception as e:
-            logging.error(f"Could not create dummy WAV file in {INPUT_AUDIO_DIR}: {e}")
+            logging.error(f"Could not create dummy directory/WAV file: {e}")
 
 # %% [markdown]
 # ## 3. Helper Function: Generate and Save Spectrogram
@@ -139,14 +151,14 @@ def create_and_save_spectrogram(audio_path, output_image_path, sr_target=None, n
 # 
 # This function orchestrates the processing of a single long audio file:
 # 1.  Reads audio file metadata (native sample rate, duration) using `soundfile.info()`.
-# 2.  Calculates how many full 1-second chunks can be extracted.
-# 3.  Creates a temporary subdirectory (within `OUTPUT_SPECTROGRAM_DIR/temp_chunks_for_spectrograms/`) to store the 1-second WAV chunks for the current long file.
-# 4.  Iterates through the long audio file, extracting each 1-second chunk at its native sample rate using `soundfile.read()`.
+# 2.  Calculates how many full 0.4-second chunks can be extracted (aligned with training pipeline).
+# 3.  Creates a temporary subdirectory (within `OUTPUT_SPECTROGRAM_DIR/temp_chunks_for_spectrograms/`) to store the 0.4-second WAV chunks for the current long file.
+# 4.  Iterates through the long audio file, extracting each 0.4-second chunk at its native sample rate using `soundfile.read()`.
 # 5.  If the source audio is stereo, it's converted to mono by taking the first channel.
-# 6.  Saves each 1-second audio chunk as a temporary WAV file.
-# 7.  Calls `create_and_save_spectrogram()` for each temporary WAV chunk. This function will handle resampling to `SR_TARGET_SPECTROGRAM` if specified.
+# 6.  Saves each 0.4-second audio chunk as a temporary WAV file.
+# 7.  Calls `create_and_save_spectrogram()` for each temporary WAV chunk. This function will use the native sample rate (no resampling) to align with the training pipeline.
 # 8.  Spectrograms are saved into a subdirectory within `OUTPUT_SPECTROGRAM_DIR` named after the original long WAV file, for better organization (e.g., `OUTPUT_SPECTROGRAM_DIR/original_wav_stem/`).
-# 9.  Deletes each temporary 1-second WAV file immediately after its spectrogram is generated.
+# 9.  Deletes each temporary 0.4-second WAV file immediately after its spectrogram is generated.
 # 10. After all chunks from the long audio file are processed, the temporary subdirectory for its chunks is removed.
 
 # %%
@@ -164,7 +176,7 @@ def process_audio_file_to_spectrogram_chunks(
     parent_dir_name = long_audio_path.parent.name # This is 'dirname'
     processed_chunk_count = 0
     
-    # Temporary directory for 1-second WAV chunks specific to this long_audio_file
+    # Temporary directory for 0.4-second WAV chunks specific to this long_audio_file
     temp_chunk_file_storage_dir = output_spectrogram_base_dir / "temp_chunks_for_spectrograms" / tape_basename
     temp_chunk_file_storage_dir.mkdir(parents=True, exist_ok=True)
 
@@ -199,22 +211,22 @@ def process_audio_file_to_spectrogram_chunks(
                     audio_chunk_data = audio_chunk_data[:, 0]
                 
                 if len(audio_chunk_data) == chunk_len_samples_native: # Ensure full chunk read
-                    # Temporary path for the 1-second WAV chunk
+                    # Temporary path for the 0.4-second WAV chunk
                     temp_chunk_filename = f"{tape_basename}_temp_chunk_{i:04d}.wav" # Temporary name, doesn't need parent dir
                     temp_chunk_path = temp_chunk_file_storage_dir / temp_chunk_filename
                     
-                    # Save the 1-second chunk at its native sample rate
+                    # Save the 0.4-second chunk at its native sample rate
                     sf.write(str(temp_chunk_path), audio_chunk_data, sr_native)
 
                     # New spectrogram filename: dirname-wavname-chunk_xxxx_spectrogram.png
                     output_spectrogram_filename = f"{parent_dir_name}-{tape_basename}-chunk_{i:04d}_spectrogram.png"
                     output_spectrogram_path = file_specific_spectrogram_output_dir / output_spectrogram_filename
                     
-                    # Generate spectrogram from the temporary 1-second WAV chunk
+                    # Generate spectrogram from the temporary 0.4-second WAV chunk
                     success = create_and_save_spectrogram(
                         audio_path=temp_chunk_path, 
                         output_image_path=output_spectrogram_path, 
-                        sr_target=sr_target_spectrogram, # librosa.load in create_and_save_spectrogram will resample
+                        sr_target=sr_target_spectrogram, # Uses native sample rate (aligned with training pipeline)
                         n_fft=n_fft_spec, 
                         hop_length=hop_length_spec, 
                         fmax=fmax_spec
@@ -222,7 +234,7 @@ def process_audio_file_to_spectrogram_chunks(
                     if success:
                         processed_chunk_count += 1
                     
-                    temp_chunk_path.unlink() # Delete temporary WAV chunk
+                    temp_chunk_path.unlink() # Delete temporary 0.4-second WAV chunk
                 else:
                     logging.warning(f"Chunk {i} from {long_audio_path.name}: Expected {chunk_len_samples_native} samples, got {len(audio_chunk_data)}. Skipping.")
             
@@ -249,45 +261,80 @@ def process_audio_file_to_spectrogram_chunks(
 # %% [markdown]
 # ## 5. Main Processing Loop
 # 
-# This section iterates through all `.wav` (and `.WAV`) audio files in the `INPUT_AUDIO_DIR`. For each valid audio file, it invokes `process_audio_file_to_spectrogram_chunks` to generate and save spectrograms for all its 1-second segments.
+# This section iterates through all subdirectories in `INPUT_UNLABELLED_BASE_DIR`. For each subdirectory, it processes all `.wav` (and `.WAV`) audio files within that directory, invoking `process_audio_file_to_spectrogram_chunks` to generate and save spectrograms for all 0.4-second segments (aligned with training pipeline).
 
 # %%
 def run_main_processing_for_unlabelled_spectrograms():
-    if not INPUT_AUDIO_DIR.is_dir(): # Path.exists() is implicitly checked
-        logging.error(f"Input audio directory {INPUT_AUDIO_DIR} is not valid. Aborting.")
+    if not INPUT_UNLABELLED_BASE_DIR.is_dir():
+        logging.error(f"Input unlabelled base directory {INPUT_UNLABELLED_BASE_DIR} is not valid. Aborting.")
         return
 
-    all_audio_files = sorted(list(set(list(INPUT_AUDIO_DIR.glob('*.wav')) + list(INPUT_AUDIO_DIR.glob('*.WAV')))))
-    all_audio_files = [f for f in all_audio_files if not f.name.startswith('.')] # Filter out hidden files
-
-    if not all_audio_files:
-        logging.warning(f"No .wav or .WAV files (non-hidden) found in {INPUT_AUDIO_DIR}. Nothing to process.")
-        return
-
-    logging.info(f"Found {len(all_audio_files)} audio files to process in {INPUT_AUDIO_DIR}.")
+    # Find all subdirectories in the unlabelled base directory
+    subdirs = [d for d in INPUT_UNLABELLED_BASE_DIR.iterdir() if d.is_dir() and not d.name.startswith('.')]
     
-    total_spectrograms_generated_all_files = 0
-    files_successfully_processed_count = 0
+    if not subdirs:
+        logging.warning(f"No subdirectories found in {INPUT_UNLABELLED_BASE_DIR}. Nothing to process.")
+        return
 
-    for audio_file_path in all_audio_files:
-        logging.info(f"--- Starting processing for: {audio_file_path.name} ---")
-        spectrograms_from_this_file = process_audio_file_to_spectrogram_chunks(
-            long_audio_path=audio_file_path,
-            output_spectrogram_base_dir=OUTPUT_SPECTROGRAM_DIR,
-            chunk_duration_s=CHUNK_DURATION_SECONDS,
-            sr_target_spectrogram=SR_TARGET_SPECTROGRAM,
-            n_fft_spec=N_FFT, 
-            hop_length_spec=HOP_LENGTH,
-            fmax_spec=FMAX_HZ
-        )
-        total_spectrograms_generated_all_files += spectrograms_from_this_file
-        if spectrograms_from_this_file > 0: # Consider a file processed if at least one spectrogram was made
-            files_successfully_processed_count += 1
-        logging.info(f"--- Finished processing for: {audio_file_path.name}. Generated {spectrograms_from_this_file} spectrograms. ---")
+    logging.info(f"Found {len(subdirs)} dataset subdirectories to process: {[d.name for d in subdirs]}")
+    
+    # Overall statistics across all datasets
+    total_spectrograms_generated_all_datasets = 0
+    total_files_successfully_processed = 0
+    total_datasets_processed = 0
 
-    logging.info(f"\n=== Overall Processing Complete ===")
-    logging.info(f"Successfully processed {files_successfully_processed_count} out of {len(all_audio_files)} audio files found.")
-    logging.info(f"Total 1-second spectrograms generated across all files: {total_spectrograms_generated_all_files}")
+    for dataset_dir in subdirs:
+        logging.info(f"\n{'='*60}")
+        logging.info(f"PROCESSING DATASET: {dataset_dir.name}")
+        logging.info(f"{'='*60}")
+        
+        # Find all audio files in this dataset directory
+        all_audio_files = sorted(list(set(list(dataset_dir.glob('*.wav')) + list(dataset_dir.glob('*.WAV')))))
+        all_audio_files = [f for f in all_audio_files if not f.name.startswith('.')] # Filter out hidden files
+
+        if not all_audio_files:
+            logging.warning(f"No .wav or .WAV files (non-hidden) found in {dataset_dir}. Skipping this dataset.")
+            continue
+
+        logging.info(f"Found {len(all_audio_files)} audio files to process in dataset '{dataset_dir.name}'.")
+        
+        # Statistics for this dataset
+        dataset_spectrograms_generated = 0
+        dataset_files_successfully_processed = 0
+
+        for audio_file_path in all_audio_files:
+            logging.info(f"--- Starting processing for: {dataset_dir.name}/{audio_file_path.name} ---")
+            spectrograms_from_this_file = process_audio_file_to_spectrogram_chunks(
+                long_audio_path=audio_file_path,
+                output_spectrogram_base_dir=OUTPUT_SPECTROGRAM_DIR,
+                chunk_duration_s=WINDOW_SIZE_SECONDS,
+                sr_target_spectrogram=SR_TARGET_SPECTROGRAM,
+                n_fft_spec=N_FFT, 
+                hop_length_spec=HOP_LENGTH,
+                fmax_spec=FMAX_HZ
+            )
+            dataset_spectrograms_generated += spectrograms_from_this_file
+            if spectrograms_from_this_file > 0: # Consider a file processed if at least one spectrogram was made
+                dataset_files_successfully_processed += 1
+            logging.info(f"--- Finished processing: {dataset_dir.name}/{audio_file_path.name}. Generated {spectrograms_from_this_file} spectrograms. ---")
+
+        # Update overall statistics
+        total_spectrograms_generated_all_datasets += dataset_spectrograms_generated
+        total_files_successfully_processed += dataset_files_successfully_processed
+        if dataset_files_successfully_processed > 0:
+            total_datasets_processed += 1
+
+        logging.info(f"\n--- DATASET '{dataset_dir.name}' SUMMARY ---")
+        logging.info(f"Successfully processed {dataset_files_successfully_processed} out of {len(all_audio_files)} audio files.")
+        logging.info(f"Generated {dataset_spectrograms_generated} spectrograms from dataset '{dataset_dir.name}'.")
+
+    # Final cleanup and overall summary
+    logging.info(f"\n{'='*60}")
+    logging.info(f"OVERALL PROCESSING COMPLETE")
+    logging.info(f"{'='*60}")
+    logging.info(f"Successfully processed {total_datasets_processed} out of {len(subdirs)} datasets.")
+    logging.info(f"Total audio files processed: {total_files_successfully_processed}")
+    logging.info(f"Total 0.4-second spectrograms generated across all datasets: {total_spectrograms_generated_all_datasets}")
     
     parent_temp_dir_for_all_chunks = OUTPUT_SPECTROGRAM_DIR / "temp_chunks_for_spectrograms"
     if parent_temp_dir_for_all_chunks.exists():
@@ -313,20 +360,25 @@ def display_example_generated_spectrogram():
     example_spectrogram_to_display = None
     
     if OUTPUT_SPECTROGRAM_DIR.is_dir():
-        # Find the first audio file that was processed (non-hidden)
-        all_audio_files_for_example = sorted(list(set(list(INPUT_AUDIO_DIR.glob('*.wav')) + list(INPUT_AUDIO_DIR.glob('*.WAV')))))
-        all_audio_files_for_example = [f for f in all_audio_files_for_example if not f.name.startswith('.')]
+        # Find the first dataset directory that was processed
+        subdirs = [d for d in INPUT_UNLABELLED_BASE_DIR.iterdir() if d.is_dir() and not d.name.startswith('.')]
+        
+        for dataset_dir in subdirs:
+            # Find the first audio file in this dataset
+            all_audio_files_for_example = sorted(list(set(list(dataset_dir.glob('*.wav')) + list(dataset_dir.glob('*.WAV')))))
+            all_audio_files_for_example = [f for f in all_audio_files_for_example if not f.name.startswith('.')]
 
-        if all_audio_files_for_example:
-            first_audio_file_stem_for_example = all_audio_files_for_example[0].stem
-            # Spectrograms are in OUTPUT_SPECTROGRAM_DIR / <original_wav_stem> /
-            spectrogram_output_subdir_for_example = OUTPUT_SPECTROGRAM_DIR / first_audio_file_stem_for_example
-            
-            if spectrogram_output_subdir_for_example.is_dir():
-                # Find any .png file in that subdirectory
-                potential_spectrograms = sorted(list(spectrogram_output_subdir_for_example.glob('*_spectrogram.png')))
-                if potential_spectrograms:
-                    example_spectrogram_to_display = potential_spectrograms[0]
+            if all_audio_files_for_example:
+                first_audio_file_stem_for_example = all_audio_files_for_example[0].stem
+                # Spectrograms are in OUTPUT_SPECTROGRAM_DIR / <original_wav_stem> /
+                spectrogram_output_subdir_for_example = OUTPUT_SPECTROGRAM_DIR / first_audio_file_stem_for_example
+                
+                if spectrogram_output_subdir_for_example.is_dir():
+                    # Find any .png file in that subdirectory
+                    potential_spectrograms = sorted(list(spectrogram_output_subdir_for_example.glob('*_spectrogram.png')))
+                    if potential_spectrograms:
+                        example_spectrogram_to_display = potential_spectrograms[0]
+                        break  # Found an example, stop looking
 
     if example_spectrogram_to_display and example_spectrogram_to_display.exists():
         logging.info(f"Displaying example spectrogram: {example_spectrogram_to_display}")
@@ -335,6 +387,6 @@ def display_example_generated_spectrogram():
         logging.info("No example spectrogram found to display. Check if processing completed and generated files in the expected output structure.")
 
 # === Display Example ===
-# display_example_generated_spectrogram()
+display_example_generated_spectrogram()
 
 

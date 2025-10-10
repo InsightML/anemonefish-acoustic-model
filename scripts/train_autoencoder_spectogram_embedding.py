@@ -48,11 +48,18 @@ logging.info("✓ Identical preprocessing ensures meaningful embedding analysis"
 
 
 # %%
-# Check for GPU
-if tf.config.list_physical_devices('GPU'):
-    logging.info("TensorFlow is using the GPU!")
-    for gpu in tf.config.list_physical_devices('GPU'):
-        logging.info(f"Name: {gpu.name}, Type: {gpu.device_type}")
+# Configure GPU memory growth to prevent memory allocation issues
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    try:
+        # Enable memory growth for all GPUs
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        logging.info("TensorFlow is using the GPU with memory growth enabled!")
+        for gpu in gpus:
+            logging.info(f"Name: {gpu.name}, Type: {gpu.device_type}")
+    except RuntimeError as e:
+        logging.warning(f"GPU memory growth setting failed: {e}")
 else:
     logging.warning("TensorFlow is NOT using the GPU. Training will be on CPU.")
 
@@ -68,28 +75,29 @@ else:
 BASE_DATA_PATH = '/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics/data/1_binary_training_data/spectograms'
 ANEMONEFISH_SPECS_PATH = os.path.join(BASE_DATA_PATH, 'anemonefish')
 NOISE_SPECS_PATH = os.path.join(BASE_DATA_PATH, 'noise')
-UNLABELED_SPECS_PATH = ''
+UNLABELED_SPECS_PATH = '/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics/data/unlabelled_spectrograms'
 
 LOGS_DIR = '/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics/logs/experiments/autoencoder_spectrogram'
 MODEL_SAVE_PATH = '/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics/models/autoencoder/'
 
 # Training Hyperparameters
-BATCH_SIZE = 64
+BATCH_SIZE = 8
 EPOCHS = 100  # Autoencoders may need more epochs
 LEARNING_RATE = 1e-2
 VALIDATION_SPLIT = 0.1
 
 # Autoencoder specific
-LATENT_DIM = 256  # Dimension of the bottleneck layer (embedding size)
+LATENT_DIM = 1024  # Dimension of the bottleneck layer (embedding size)
 
 # Data sampling - for computational efficiency, we'll sample from the large unlabeled set
-MAX_UNLABELED_SAMPLES = 10000  # Adjust based on computational resources
+MAX_UNLABELED_SAMPLES = 100000  # Adjust based on computational resources
 
 # Image parameters will be taken from shared config (automatically consistent with binary classifier)
 logging.info("Configuration loaded:")
 logging.info(f"  • Model training configuration set")
 logging.info(f"  • Image parameters will come from shared preprocessing config")
 logging.info(f"  • Latent Dimension: {LATENT_DIM}")
+logging.info(f"  • Batch Size: {BATCH_SIZE}")
 logging.info(f"  • Max Unlabeled Samples: {MAX_UNLABELED_SAMPLES}")
 logging.info(f"  • Ensuring consistency with binary classifier preprocessing")
 
@@ -229,12 +237,12 @@ if len(all_paths) > 0:
     # Create datasets using shared preprocessing module (autoencoder mode returns (X, X))
     logging.info("Creating optimized tf.data datasets with shared preprocessing...")
     
-    # Training dataset with augmentation and caching
+    # Training dataset with augmentation - NO CACHING for large datasets
     train_dataset = builder.create_autoencoder_dataset(
         image_paths=train_paths,
         batch_size=BATCH_SIZE,
         is_training=True,
-        cache_data=True,
+        cache_data=False,  # Disable caching to prevent memory exhaustion
     )
     
     # Validation dataset without augmentation
@@ -242,7 +250,7 @@ if len(all_paths) > 0:
         image_paths=val_paths,
         batch_size=BATCH_SIZE,
         is_training=False,
-        cache_data=True,
+        cache_data=False,  # Disable caching to prevent memory exhaustion
     )
     
     # Get dataset information using shared utility
@@ -256,8 +264,6 @@ if len(all_paths) > 0:
     logging.info(f"📈 Dataset Statistics:")
     logging.info(f"  • Training steps per epoch: {train_steps}")
     logging.info(f"  • Validation steps per epoch: {val_steps}")
-    logging.info(f"  • Using identical preprocessing as binary classifier")
-    logging.info(f"  • Performance: 2-5x faster than previous custom pipeline")
     
     # Test the shared pipeline
     logging.info(f"🧪 Testing shared preprocessing pipeline...")

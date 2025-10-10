@@ -49,7 +49,7 @@ print(f"GPU Available: {len(tf.config.list_physical_devices('GPU')) > 0}")
 # --- CONFIGURATION ---
 
 # Model and paths
-MODEL_PATH = '/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics/models/binary_classifier/checkpoints_run_6/best_model.keras'
+MODEL_PATH = '/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics/models/binary_classifier/checkpoints_run_7/best_model.keras'
 AUDIO_INPUT_DIR = Path('/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics/data/prediction_input')  # Input audio files
 RESULTS_OUTPUT_DIR = Path('/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics/results/predictions')  # Output results
 
@@ -67,9 +67,9 @@ SPECTROGRAM_CONFIG = {
 
 # Sliding Window Parameters
 WINDOW_CONFIG = {
-    'window_duration': 1.0,  # seconds (matches training)
-    'stride_duration': 0.1,  # seconds (high temporal resolution)
-    'min_duration': 0.1     # minimum segment duration to process
+    'window_duration': 0.4,  # seconds (matches training)
+    'stride_duration': 0.2,  # seconds (high temporal resolution)
+    'min_duration': 0.4     # minimum segment duration to process
 }
 
 # Prediction Parameters

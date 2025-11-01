@@ -18,7 +18,7 @@ from .visualization import (
     plot_confusion_matrix,
     plot_prediction_samples
 )
-
+from .utils import pretty_path
 __all__ = [
     # Logger utilities
     'setup_logger', 
@@ -38,4 +38,5 @@ __all__ = [
     'plot_feature_comparison',
     'plot_confusion_matrix',
     'plot_prediction_samples'
+    'pretty_path'
 ]

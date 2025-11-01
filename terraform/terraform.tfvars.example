@@ -1,0 +1,31 @@
+# AWS Configuration
+aws_region = "us-east-1"
+
+# Project Configuration
+project_name = "anemonefish-training"
+
+# EC2 Instance Configuration
+instance_type = "g4dn.xlarge"  # NVIDIA T4 GPU, 4 vCPUs, 16 GB RAM
+ebs_volume_size = 100          # GB
+
+# SSH Configuration
+ssh_key_name = "your-key-pair-name"  # REQUIRED: Name of your AWS key pair
+allowed_ssh_cidr = "YOUR.IP.ADDRESS/32"  # REQUIRED: Your IP address for SSH access
+
+# Cost Optimization
+use_spot_instance = false  # Set to true for 60-70% cost savings (but with interruption risk)
+spot_max_price = ""        # Leave empty to use on-demand price as max
+
+# S3 Configuration
+s3_bucket_name = ""  # Leave empty to auto-generate unique name
+
+# Training Configuration
+auto_terminate = true        # Auto-terminate instance after training completes
+enable_tensorboard = true    # Enable TensorBoard web interface
+
+# Alternative GPU Instance Types (for reference):
+# - g4dn.xlarge:   1x T4 GPU, 4 vCPUs, 16 GB RAM  (~$0.526/hour on-demand)
+# - g4dn.2xlarge:  1x T4 GPU, 8 vCPUs, 32 GB RAM  (~$0.752/hour on-demand)
+# - g5.xlarge:     1x A10G GPU, 4 vCPUs, 16 GB RAM (~$1.006/hour on-demand)
+# - g5.2xlarge:    1x A10G GPU, 8 vCPUs, 32 GB RAM (~$1.212/hour on-demand)
+# - p3.2xlarge:    1x V100 GPU, 8 vCPUs, 61 GB RAM (~$3.06/hour on-demand)

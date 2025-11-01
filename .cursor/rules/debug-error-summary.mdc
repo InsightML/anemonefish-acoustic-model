@@ -1,0 +1,57 @@
+---
+alwaysApply: false
+description: Debug recent errors from the error summary log
+---
+
+# Error Debugging from Error Summary
+
+When the user mentions an error or asks for help debugging, read the error summary file at [error_summary.json](mdc:logs/error_summary.json) which contains the 5 most recent errors captured by the logging system.
+
+## Analysis Guidelines
+
+1. **Check timestamps first**: The errors are ordered by recency (newest first). Focus on the most recent error(s) unless the user specifies otherwise.
+
+2. **Determine relevance**: Not all 5 errors may be relevant to the current request. Use these fields to assess relevance:
+   - `timestamp`: Is this error recent enough to be related to the current issue?
+   - `module`: Does this match the file or module the user is working on?
+   - `function`: Does this match the context of what the user is doing?
+   - `line_number`: Does this match the area of code being discussed?
+   - `message`: Does the error message relate to the user's question?
+
+3. **Prioritize context**: Each error includes `context_lines` showing the 20 log messages leading up to the error. Use these to understand what was happening when the error occurred.
+
+4. **Single vs Multiple errors**: 
+   - If the user says "I have an error" (singular), focus on the most recent relevant error
+   - Only address multiple errors if the user explicitly mentions multiple issues or if the errors are clearly related
+
+5. **Provide focused solutions**: Once you've identified the relevant error(s), provide a targeted solution rather than trying to fix all logged errors.
+
+## Error Summary Structure
+
+The [error_summary.json](mdc:logs/error_summary.json) file contains:
+- `errors`: Array of up to 5 most recent errors
+- `latest_error`: Quick reference to the most recent error
+
+Each error entry includes:
+- `timestamp`: When the error occurred
+- `level`: ERROR or CRITICAL
+- `logger_name`: Name of the logger that captured it
+- `message`: The error message
+- `module`: Python module where error occurred
+- `function`: Function where error occurred
+- `line_number`: Line number of the error
+- `context_lines`: Last 20 log messages before the error
+- `traceback`: Full Python traceback (if available)
+
+## Main Log
+
+The complete logging history is available in [main.log](mdc:logs/main.log) if more context is needed beyond the error summary.
+
+## Workflow
+
+1. Read [error_summary.json](mdc:logs/error_summary.json)
+2. Analyze the timestamp, module, function, and context to determine which error(s) are relevant
+3. Examine the `context_lines` to understand what led to the error
+4. Review the `traceback` if available for deeper debugging
+5. Read the relevant source file(s) identified in the error
+6. Provide a targeted solution for the relevant error(s) only

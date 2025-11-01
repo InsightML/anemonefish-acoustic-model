@@ -1,7 +1,21 @@
 # %% [markdown]
+# # Data preprocessing: Audio file to Spectrogram
+# 
+# This is the second step in the data preprocessing pipeline. We convert segmented audio files into spectrogram images.
+# 
+# **Multi-Class Support**: This notebook now processes all classes defined in the YAML configuration file. It automatically generates spectrograms for each class (e.g., anemonefish, noise, biological) and organizes them into the appropriate output directories.
+# 
+# **Inputs**: Segmented `.wav` files from step 1 (stored in `_cache/1_generate_training_audio/{class_name}/`)
+# **Outputs**: Spectrogram PNG images for each class (stored in `2_training_datasets/{dataset_version}/{class_name}/`)
+# 
+# The preprocessing configuration is also saved to the output dataset directory for reproducibility.
+
+# %% [markdown]
 # # 1. Introduction
 # 
-# This notebook processes audio files containing anemonefish calls, converting them into spectrograms. The goal is to visualize the frequency content of these calls over time, similar to Audacity's spectrogram view, focusing on the 0-2000Hz range. Spectrograms will be saved as image files.
+# This notebook processes segmented audio files from multiple classes, converting them into spectrograms suitable for training machine learning models. The goal is to visualize the frequency content over time, focusing on the relevant frequency range (e.g., 0-2000Hz for anemonefish calls). 
+# 
+# All parameters are loaded from a YAML configuration file, ensuring consistency with step 1 (audio segmentation) and enabling reproducibility. The notebook automatically processes all classes defined in the configuration.
 
 # %% [markdown]
 # # 2. Setup and Imports
@@ -14,6 +28,8 @@ import librosa.display
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import yaml
+import shutil
 from pathlib import Path
 from IPython.display import Image, display
 from tqdm import tqdm
@@ -21,31 +37,59 @@ from tqdm import tqdm
 # %% [markdown]
 # # 3. Configuration
 # 
-# Define the input and output directories, and parameters for spectrogram generation.
-# - `AUDIO_DIR`: Path to the directory containing your audio files (e.g., `.wav`).
-# - `SPECTROGRAM_DIR`: Path to the directory where generated spectrogram images will be saved.
-# - `FMAX_HZ`: Maximum frequency (in Hz) to display on the spectrogram.
-# - `N_FFT`: FFT window size. This affects the frequency resolution.
-# - `HOP_LENGTH`: Hop length for STFT. This affects the time resolution.
+# **YAML-Based Configuration**: Load the same configuration file used in step 1 (audio segmentation). This ensures consistency across the preprocessing pipeline.
+# 
+# **Important**: Update the `CONFIG_PATH` variable below to point to the same YAML config file you used in notebook 1-1.
+# 
+# The configuration specifies:
+# - Classes to process
+# - Input/output directories
+# - Spectrogram parameters (frequency range, FFT settings, output resolution)
 
 # %%
-# --- Configuration ---
-AUDIO_DIR = Path('/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics/data/1_binary_training_data/audio_files/noise') # IMPORTANT: Change if your audio files are elsewhere
-SPECTROGRAM_DIR = Path('/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics/data/1_binary_training_data/spectograms/noise')
-FMAX_HZ = 2000  # Max frequency for anemonefish calls
-N_FFT = 1024  # FFT window size
-HOP_LENGTH = N_FFT // 4  # Hop length, typically 1/4 or 1/2 of N_FFT
+# --- Load Configuration from YAML ---
 
-WIDTH_PIXELS = 256  # Width in pixels
-HEIGHT_PIXELS = 256  # Height in pixels
+# !!! UPDATE THIS PATH TO MATCH THE CONFIG USED IN NOTEBOOK 1-1 !!!
+CONFIG_PATH = '/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics/data/2_training_datasets/v2_biological/preprocessing_config_v2_biological.yaml'
 
-# Create output directory if it doesn't exist
-SPECTROGRAM_DIR.mkdir(parents=True, exist_ok=True)
+# Load configuration
+print(f"Loading configuration from: {CONFIG_PATH}")
+with open(CONFIG_PATH, 'r') as f:
+    config = yaml.safe_load(f)
 
-print(f"Audio input directory: {AUDIO_DIR.resolve()}")
-print(f"Spectrogram output directory: {SPECTROGRAM_DIR.resolve()}")
-if not AUDIO_DIR.exists():
-    print(f"WARNING: Audio directory {AUDIO_DIR} does not exist. Please check the path.")
+# Extract configuration values
+WORKSPACE_BASE_PATH = Path(config['workspace_base_path'])
+DATASET_VERSION = config['dataset_version']
+CLASSES = config['classes']
+
+# Construct paths
+INPUT_AUDIO_BASE_DIR = WORKSPACE_BASE_PATH / 'data' / '_cache' / '1_generate_training_audio'
+OUTPUT_BASE_DIR = WORKSPACE_BASE_PATH / 'data' / '2_training_datasets' / DATASET_VERSION
+
+# Spectrogram parameters
+FMAX_HZ = config['spectrogram']['fmax_hz']
+N_FFT = config['spectrogram']['n_fft']
+HOP_LENGTH = config['spectrogram']['hop_length']
+WIDTH_PIXELS = config['spectrogram']['width_pixels']
+HEIGHT_PIXELS = config['spectrogram']['height_pixels']
+
+# Create output directory structure
+OUTPUT_BASE_DIR.mkdir(parents=True, exist_ok=True)
+
+print(f"\n=== Configuration Loaded ===")
+print(f"Dataset Version: {DATASET_VERSION}")
+print(f"Classes to process: {CLASSES}")
+print(f"Input directory: {INPUT_AUDIO_BASE_DIR}")
+print(f"Output directory: {OUTPUT_BASE_DIR}")
+print(f"\nSpectrogram parameters:")
+print(f"  - Frequency range: 0-{FMAX_HZ} Hz")
+print(f"  - FFT size: {N_FFT}")
+print(f"  - Hop length: {HOP_LENGTH}")
+print(f"  - Output size: {WIDTH_PIXELS}x{HEIGHT_PIXELS} pixels")
+
+# Validate input directory exists
+if not INPUT_AUDIO_BASE_DIR.exists():
+    print(f"\nWARNING: Input directory {INPUT_AUDIO_BASE_DIR} does not exist. Please run notebook 1-1 first.")
 
 # %% [markdown]
 # # 4. Function to Generate and Save Spectrogram
@@ -127,62 +171,120 @@ def create_and_save_spectrogram(audio_path, output_image_path, sr_target=None, n
 #    print(f"Test audio file {test_audio_file} not found. Skipping example generation here.")
 
 # %% [markdown]
-# # 5. Process Audio Files in Directory
+# # 5. Process Audio Files for All Classes
 # 
-# This section iterates through all `.wav` audio files in the specified `AUDIO_DIR`, generates a spectrogram for each, and saves it to the `SPECTROGRAM_DIR`.
+# This section processes all classes defined in the configuration:
+# 1. For each class, it reads audio files from `_cache/1_generate_training_audio/{class_name}/`
+# 2. Generates spectrograms for each audio file
+# 3. Saves spectrograms to `2_training_datasets/{dataset_version}/{class_name}/`
+# 4. Copies the preprocessing config to the output directory for reproducibility
 
 # %%
-processed_files = 0
-error_files = 0
+# Initialize statistics
+total_processed = 0
+total_errors = 0
+class_stats = {}
 example_spectrogram_path = None
 
-if AUDIO_DIR.exists() and AUDIO_DIR.is_dir():
-    print(f"Processing audio files from: {AUDIO_DIR}")
-    # Look for .wav files, but you can add other extensions like '.mp3'
-    audio_files = [f for f in AUDIO_DIR.glob('*.wav') if not f.name.startswith('.')]
-
-    # TEMP: Remove the first 4 and last 4 files
-    audio_files = audio_files[4:-4]
-
+# Process each class
+for class_name in CLASSES:
+    print(f"\n{'='*60}")
+    print(f"Processing class: {class_name.upper()}")
+    print(f"{'='*60}")
+    
+    # Define input and output directories for this class
+    class_input_dir = INPUT_AUDIO_BASE_DIR / class_name
+    class_output_dir = OUTPUT_BASE_DIR / class_name
+    
+    # Create output directory
+    class_output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Check if input directory exists
+    if not class_input_dir.exists():
+        print(f"WARNING: Input directory not found: {class_input_dir}")
+        print(f"Skipping class '{class_name}'. Please run notebook 1-1 first.")
+        continue
+    
+    # Find all audio files for this class
+    audio_files = [f for f in class_input_dir.glob('*.wav') if not f.name.startswith('.')]
+    
     if not audio_files:
-        print(f"No .wav files found in {AUDIO_DIR}. Please check the directory and file extensions.")
-    else:
-        print(f"Found {len(audio_files)} .wav files to process.")
-
-    for audio_file_path in tqdm(audio_files):
-        # print(f"Processing: {audio_file_path.name}...")
+        print(f"No .wav files found in {class_input_dir}")
+        continue
+    
+    print(f"Found {len(audio_files)} audio files to process")
+    print(f"Input:  {class_input_dir}")
+    print(f"Output: {class_output_dir}")
+    
+    # Process files for this class
+    class_processed = 0
+    class_errors = 0
+    
+    for audio_file_path in tqdm(audio_files, desc=f"Processing {class_name}"):
         output_filename = audio_file_path.stem + '_spectrogram.png'
-        output_image_path = SPECTROGRAM_DIR / output_filename
+        output_image_path = class_output_dir / output_filename
         
-        if create_and_save_spectrogram(audio_file_path, output_image_path, fmax=2000):
-            processed_files += 1
-            if example_spectrogram_path is None: # Store path of the first successfully processed file
+        if create_and_save_spectrogram(audio_file_path, output_image_path, fmax=FMAX_HZ):
+            class_processed += 1
+            total_processed += 1
+            if example_spectrogram_path is None:  # Store first successful spectrogram
                 example_spectrogram_path = output_image_path
         else:
-            error_files += 1
-            
-    print(f"\n--- Processing Complete ---")
-    print(f"Successfully processed and saved {processed_files} spectrograms.")
-    if error_files > 0:
-        print(f"Encountered errors for {error_files} files.")
-    if example_spectrogram_path:
-        print(f"An example spectrogram: {example_spectrogram_path}")
-else:
-    print(f"Audio directory {AUDIO_DIR} does not exist or is not a directory. Please check the 'AUDIO_DIR' path in Cell 5.")
+            class_errors += 1
+            total_errors += 1
+    
+    # Store class statistics
+    class_stats[class_name] = {
+        'processed': class_processed,
+        'errors': class_errors,
+        'total_files': len(audio_files)
+    }
+    
+    print(f"✓ Processed {class_processed}/{len(audio_files)} files for '{class_name}'")
+    if class_errors > 0:
+        print(f"✗ Encountered {class_errors} errors")
+
+# Copy configuration file to output directory for reproducibility
+config_output_path = OUTPUT_BASE_DIR / 'preprocessing_config.yaml'
+shutil.copy2(CONFIG_PATH, config_output_path)
+print(f"\n{'='*60}")
+print(f"Saved preprocessing config to: {config_output_path}")
+
+# Print final summary
+print(f"\n{'='*60}")
+print(f"PROCESSING COMPLETE")
+print(f"{'='*60}")
+print(f"Dataset Version: {DATASET_VERSION}")
+print(f"Total spectrograms generated: {total_processed}")
+if total_errors > 0:
+    print(f"Total errors: {total_errors}")
+
+print(f"\nBreakdown by class:")
+for class_name in CLASSES:
+    if class_name in class_stats:
+        stats = class_stats[class_name]
+        print(f"  {class_name}: {stats['processed']}/{stats['total_files']} files")
+    else:
+        print(f"  {class_name}: Not processed (no input files found)")
+
+if example_spectrogram_path:
+    print(f"\nExample spectrogram saved at: {example_spectrogram_path}")
 
 
 # %% [markdown]
 # # 6. Display an Example Spectrogram
 # 
-# If spectrograms were generated, this section displays the first one created.
+# If spectrograms were successfully generated, this section displays the first one that was created.
 
 # %%
 if example_spectrogram_path and example_spectrogram_path.exists():
-    print(f"Displaying example: {example_spectrogram_path}")
-    display(Image(filename=example_spectrogram_path, width=800))
-elif processed_files > 0 :
-     print("An example spectrogram was generated, but its path was not captured. Check the SPECTROGRAM_DIR.")
+    print(f"Displaying example spectrogram:")
+    print(f"Path: {example_spectrogram_path}")
+    display(Image(filename=str(example_spectrogram_path), width=800))
+elif total_processed > 0:
+    print("Spectrograms were generated, but unable to display an example.")
+    print(f"Check the output directory: {OUTPUT_BASE_DIR}")
 else:
-    print("No spectrograms were generated or found to display.")
+    print("No spectrograms were generated.")
 
 

@@ -1,0 +1,47 @@
+# Inference Configuration
+# This configuration ensures consistency with training parameters
+
+# Spectrogram Parameters (MUST match training)
+spectrogram:
+  fmax_hz: 2000          # Maximum frequency for anemonefish calls
+  n_fft: 1024           # FFT window size
+  hop_length: 256        # Hop length for STFT
+  width_pixels: 256      # Output spectrogram width
+  height_pixels: 256     # Output spectrogram height
+  target_sr: null        # Target sampling rate (null = use original)
+  
+  # Note: Normalization is [0, 1] by dividing by 255.0
+  # NO ImageNet normalization (matches training pipeline)
+
+# Sliding Window Parameters
+window:
+  window_duration: 0.4   # seconds (matches training)
+  stride_duration: 0.2    # seconds (0.4s windows for inference)
+  min_duration: 0.1      # minimum segment duration to process
+
+# Prediction Parameters
+prediction:
+  batch_size: 32
+  confidence_threshold: 0.5  # Minimum confidence for event detection
+  target_class: "anemonefish"  # Class to detect events for (multi-class model)
+  min_event_duration: 0.2     # seconds
+  min_gap_duration: 0.1        # seconds between events
+  smoothing_window: 5          # for median filtering
+
+# Model Configuration
+model:
+  # Model path will be set via environment variable in AWS deployment
+  # MODEL_S3_BUCKET and MODEL_S3_KEY for S3 storage
+  # or MODEL_LOCAL_PATH for local testing
+  version: "v1.0"
+  # Classes must match training order: ['noise', 'anemonefish', 'biological']
+  classes:
+    - "noise"
+    - "anemonefish"
+    - "biological"
+
+# AWS Configuration (for deployment)
+aws:
+  s3_input_bucket: null    # Set via environment variable
+  s3_output_bucket: null   # Set via environment variable
+  s3_model_bucket: null    # Set via environment variable

@@ -1,0 +1,43 @@
+# Single-stage build for Lambda container
+FROM public.ecr.aws/lambda/python:3.10
+
+# Install system dependencies for audio processing
+RUN yum install -y \
+    libsndfile \
+    ffmpeg \
+    && yum clean all
+
+# Copy requirements and install Python dependencies directly
+COPY docker/requirements-lambda.txt /tmp/
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir --only-binary=:all: -r /tmp/requirements-lambda.txt || \
+    pip install --no-cache-dir -r /tmp/requirements-lambda.txt
+
+# Copy application code
+WORKDIR ${LAMBDA_TASK_ROOT}
+
+# Copy the anemonefish_acoustics package
+COPY src/anemonefish_acoustics ${LAMBDA_TASK_ROOT}/anemonefish_acoustics/
+
+# Copy configuration
+COPY config/inference_config.yaml ${LAMBDA_TASK_ROOT}/config/
+
+# Create model directory (model will be mounted or loaded from S3)
+# For local testing: Model is mounted via volume in docker-compose.yml
+# For production: Model is loaded from S3 at runtime
+RUN mkdir -p ${LAMBDA_TASK_ROOT}/model
+
+# Set environment variables
+ENV MODEL_LOCAL_PATH=/var/task/model/best_model.keras
+ENV CONFIG_PATH=/var/task/config/inference_config.yaml
+ENV PYTHONPATH=/var/task:${PYTHONPATH}
+
+# Note: To bake a model into the image for standalone deployment:
+# 1. Uncomment the line below
+# 2. Run: docker build --build-arg INCLUDE_MODEL=true ...
+# ARG INCLUDE_MODEL=false
+# COPY models/target_to_noise_classifier/*/best_model.keras ${LAMBDA_TASK_ROOT}/model/best_model.keras
+
+# Set the Lambda handler
+CMD ["anemonefish_acoustics.lambda.inference_handler.lambda_handler"]
+

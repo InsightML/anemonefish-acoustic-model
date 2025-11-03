@@ -1,0 +1,27 @@
+# Test container for end-to-end validation
+FROM python:3.10-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    jq \
+    libsndfile1 \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+RUN pip install --no-cache-dir \
+    boto3 \
+    requests \
+    pytest \
+    pytest-timeout \
+    pytest-json-report \
+    librosa \
+    numpy \
+    pyyaml
+
+WORKDIR /tests
+
+# Default command runs all tests
+CMD ["pytest", "-v", "--json-report", "--json-report-file=/test-results/report.json"]
+

@@ -6,12 +6,14 @@ numpy>=1.20.0,<2.0.0
 librosa>=0.9.0,<0.11.0
 soundfile>=0.10.3
 scipy>=1.7.0,<2.0.0
+matplotlib>=3.5.0
+opencv-python-headless>=4.5.0  # headless version for serverless
 # numba - optional, makes librosa faster but requires LLVM (skip for Lambda)
 # numba>=0.56.0
 
 # TensorFlow for Linux (Lambda runtime)
-# Using older version with better wheel support
-tensorflow==2.15.0
+# Match training version (2.16.2 with Keras 3.x)
+tensorflow==2.16.2
 
 # Audio processing
 audioread>=2.1.9

@@ -1,1 +1,1 @@
-{"errorMessage": "Unable to import module 'anemonefish_acoustics.lambda.inference_handler': No module named 'numpy'", "errorType": "Runtime.ImportModuleError", "requestId": "", "stackTrace": []}
+{"statusCode": 500, "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"}, "body": "{\"error\": \"Model not loaded\", \"message\": \"Failed to initialize model\"}"}

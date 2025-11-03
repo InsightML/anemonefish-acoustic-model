@@ -1,43 +1,17 @@
-# Multi-stage build for optimized Lambda container
-# Stage 1: Build dependencies
-FROM public.ecr.aws/lambda/python:3.10 AS builder
-
-# Install system dependencies for audio processing and building Python packages
-RUN yum install -y \
-    gcc \
-    gcc-c++ \
-    make \
-    cmake3 \
-    pkg-config \
-    libsndfile \
-    libsndfile-devel \
-    hdf5-devel \
-    ffmpeg \
-    && ln -sf /usr/bin/cmake3 /usr/bin/cmake \
-    && yum clean all
-
-# Create virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Copy requirements and install Python dependencies
-COPY docker/requirements-lambda.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir --only-binary=:all: -r requirements-lambda.txt || \
-    pip install --no-cache-dir -r requirements-lambda.txt
-
-# Stage 2: Runtime image
+# Single-stage build for Lambda container
 FROM public.ecr.aws/lambda/python:3.10
 
-# Install runtime system dependencies
+# Install system dependencies for audio processing
 RUN yum install -y \
     libsndfile \
     ffmpeg \
     && yum clean all
 
-# Copy Python dependencies from builder
-COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Copy requirements and install Python dependencies directly
+COPY docker/requirements-lambda.txt /tmp/
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir --only-binary=:all: -r /tmp/requirements-lambda.txt || \
+    pip install --no-cache-dir -r /tmp/requirements-lambda.txt
 
 # Copy application code
 WORKDIR ${LAMBDA_TASK_ROOT}
@@ -65,5 +39,5 @@ ENV PYTHONPATH=/var/task:${PYTHONPATH}
 # COPY models/target_to_noise_classifier/*/best_model.keras ${LAMBDA_TASK_ROOT}/model/best_model.keras
 
 # Set the Lambda handler
-CMD ["anemonefish_acoustics.lambda.inference_handler.handler"]
+CMD ["anemonefish_acoustics.lambda.inference_handler.lambda_handler"]
 

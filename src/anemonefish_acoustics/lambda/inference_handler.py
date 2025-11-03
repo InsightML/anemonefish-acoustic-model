@@ -48,6 +48,10 @@ def load_config() -> Dict[str, Any]:
     config : Dict[str, Any]
         Configuration dictionary
     """
+    # Get classes from environment or use default
+    classes_str = os.environ.get('MODEL_CLASSES', 'noise,anemonefish,biological')
+    classes = [c.strip() for c in classes_str.split(',')]
+    
     return {
         'spectrogram': {
             'fmax': int(os.environ.get('FMAX_HZ', 2000)),
@@ -63,13 +67,15 @@ def load_config() -> Dict[str, Any]:
         },
         'prediction': {
             'batch_size': int(os.environ.get('BATCH_SIZE', 32)),
-            'probability_threshold': float(os.environ.get('PROBABILITY_THRESHOLD', 0.5)),
+            'confidence_threshold': float(os.environ.get('CONFIDENCE_THRESHOLD', 0.5)),
             'min_event_duration': float(os.environ.get('MIN_EVENT_DURATION', 0.2)),
             'min_gap_duration': float(os.environ.get('MIN_GAP_DURATION', 0.1)),
-            'smoothing_window': int(os.environ.get('SMOOTHING_WINDOW', 5))
+            'smoothing_window': int(os.environ.get('SMOOTHING_WINDOW', 5)),
+            'target_class': os.environ.get('TARGET_CLASS', 'anemonefish')  # Class to detect events for
         },
         'model': {
-            'version': os.environ.get('MODEL_VERSION', 'v1.0')
+            'version': os.environ.get('MODEL_VERSION', 'v1.0'),
+            'classes': classes
         },
         'aws': {
             's3_model_bucket': os.environ.get('S3_MODEL_BUCKET'),
@@ -152,7 +158,9 @@ def initialize_model():
         model_path = os.environ.get('MODEL_LOCAL_PATH')
     
     if model_path and os.path.exists(model_path):
-        _model = ModelInference(model_path=model_path)
+        # Initialize model with classes from config
+        classes = _config['model'].get('classes', ['noise', 'anemonefish', 'biological'])
+        _model = ModelInference(model_path=model_path, classes=classes)
         if _model.model is None:
             print("Failed to load model")
             _model = None
@@ -369,25 +377,34 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 verbose=0
             )
             
-            # Apply smoothing
+            # Apply smoothing to probabilities (shape: N, num_classes)
             smoothed_probs = smooth_predictions(
                 probabilities,
                 pred_config['smoothing_window']
             )
             
-            # Get predictions with timestamps
+            # Get predictions with timestamps (returns class predictions)
             predictions = _model.predict_with_timestamps(
                 spectrograms,
                 timestamps,
                 batch_size=pred_config['batch_size'],
-                probability_threshold=pred_config['probability_threshold']
+                return_all_probabilities=False
             )
             
-            # Detect events
+            # Extract predicted class names for event detection
+            predicted_classes = [pred['class'] for pred in predictions]
+            
+            # Create class index map from model classes
+            class_index_map = {cls: idx for idx, cls in enumerate(_model.classes)}
+            
+            # Detect events for target class (e.g., anemonefish)
             events = detect_events(
                 smoothed_probs,
                 timestamps,
-                probability_threshold=pred_config['probability_threshold'],
+                predicted_classes=predicted_classes,
+                target_class=pred_config.get('target_class', 'anemonefish'),
+                class_index_map=class_index_map,
+                confidence_threshold=pred_config.get('confidence_threshold', 0.5),
                 min_event_duration=pred_config['min_event_duration'],
                 min_gap_duration=pred_config['min_gap_duration']
             )

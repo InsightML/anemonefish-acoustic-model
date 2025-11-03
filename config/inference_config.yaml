@@ -22,10 +22,11 @@ window:
 # Prediction Parameters
 prediction:
   batch_size: 32
-  probability_threshold: 0.5
-  min_event_duration: 0.2  # seconds
-  min_gap_duration: 0.1     # seconds between events
-  smoothing_window: 5       # for median filtering
+  confidence_threshold: 0.5  # Minimum confidence for event detection
+  target_class: "anemonefish"  # Class to detect events for (multi-class model)
+  min_event_duration: 0.2     # seconds
+  min_gap_duration: 0.1        # seconds between events
+  smoothing_window: 5          # for median filtering
 
 # Model Configuration
 model:
@@ -33,6 +34,11 @@ model:
   # MODEL_S3_BUCKET and MODEL_S3_KEY for S3 storage
   # or MODEL_LOCAL_PATH for local testing
   version: "v1.0"
+  # Classes must match training order: ['noise', 'anemonefish', 'biological']
+  classes:
+    - "noise"
+    - "anemonefish"
+    - "biological"
 
 # AWS Configuration (for deployment)
 aws:

@@ -1,0 +1,26 @@
+# Lambda-compatible requirements for inference
+# Note: Using standard tensorflow (not macOS-specific)
+
+numpy>=1.20.0,<2.0.0
+librosa>=0.9.0,<0.11.0
+soundfile>=0.10.3
+scipy>=1.7.0,<2.0.0
+numba>=0.56.0
+
+# TensorFlow for Linux (Lambda runtime)
+tensorflow>=2.13.0,<2.17.0
+
+# Audio processing
+audioread>=2.1.9
+resampy>=0.4.2
+
+# AWS SDK
+boto3>=1.26.0
+botocore>=1.29.0
+
+# YAML parsing
+pyyaml>=6.0
+
+# Efficient array operations
+scikit-learn>=1.0.0,<1.4.0
+

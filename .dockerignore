@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Data directories (large files)
+data/
+!data/.gitkeep
+archive/
+results/
+logs/
+
+# Model checkpoints (except the one we need)
+models/
+# Note: Specific model will be copied via ARG in Dockerfile
+
+# Documentation
+docs/
+*.md
+!docker/README.md
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Tests (not needed in Lambda)
+tests/
+notebooks/
+
+# CI/CD
+.github/
+.circleci/
+
+# Terraform
+terraform/
+
+# Scripts (not needed in Lambda)
+scripts/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Temporary files
+*.log
+*.tmp
+tmp/
+temp/
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+

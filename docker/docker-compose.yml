@@ -1,0 +1,82 @@
+services:
+  # LocalStack for mocking AWS services (S3, Lambda)
+  localstack:
+    image: localstack/localstack:latest
+    container_name: anemonefish-localstack
+    ports:
+      - "4566:4566"  # LocalStack gateway
+      - "4571:4571"  # LocalStack legacy edge port
+    environment:
+      - SERVICES=s3,lambda,apigateway,cloudwatch
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - LAMBDA_EXECUTOR=docker-reuse
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - localstack-data:/tmp/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./init-localstack.sh:/etc/localstack/init/ready.d/init-localstack.sh
+    networks:
+      - anemonefish-network
+
+  # Inference Lambda function (for local testing)
+  inference-lambda:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.inference
+    container_name: anemonefish-inference
+    ports:
+      - "9000:8080"  # Lambda Runtime Interface Emulator
+    environment:
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - S3_INPUT_BUCKET=anemonefish-inference-input
+      - S3_OUTPUT_BUCKET=anemonefish-inference-output
+      - S3_MODEL_BUCKET=anemonefish-model-artifacts
+      - MODEL_S3_KEY=models/best_model.keras
+      - CONFIG_PATH=/var/task/config/inference_config.yaml
+      - LOG_LEVEL=DEBUG
+    volumes:
+      # Mount model directory for easy updates during development
+      - ../models/target_to_noise_classifier/trial0_dropout_300ep_20251102_225658:/var/task/model:ro
+      - ../config:/var/task/config:ro
+      # Mount source code for development (comment out for production testing)
+      - ../src/anemonefish_acoustics:/var/task/anemonefish_acoustics:ro
+    networks:
+      - anemonefish-network
+    depends_on:
+      - localstack
+
+  # Test runner container
+  test-runner:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test
+    container_name: anemonefish-test-runner
+    environment:
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - LAMBDA_ENDPOINT=http://inference-lambda:8080/2015-03-31/functions/function/invocations
+    volumes:
+      - ../tests:/tests:ro
+      - ../data/1_raw:/data:ro
+      - ./test-results:/test-results
+    networks:
+      - anemonefish-network
+    depends_on:
+      - inference-lambda
+      - localstack
+    profiles:
+      - test  # Only start when explicitly requested
+
+networks:
+  anemonefish-network:
+    driver: bridge
+
+volumes:
+  localstack-data:
+

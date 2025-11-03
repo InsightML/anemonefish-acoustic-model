@@ -1,0 +1,57 @@
+# Multi-stage build for optimized Lambda container
+# Stage 1: Build dependencies
+FROM public.ecr.aws/lambda/python:3.10 as builder
+
+# Install system dependencies for audio processing
+RUN yum install -y \
+    gcc \
+    gcc-c++ \
+    make \
+    libsndfile \
+    ffmpeg \
+    && yum clean all
+
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy requirements and install Python dependencies
+COPY docker/requirements-lambda.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements-lambda.txt
+
+# Stage 2: Runtime image
+FROM public.ecr.aws/lambda/python:3.10
+
+# Install runtime system dependencies
+RUN yum install -y \
+    libsndfile \
+    ffmpeg \
+    && yum clean all
+
+# Copy Python dependencies from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy application code
+WORKDIR ${LAMBDA_TASK_ROOT}
+
+# Copy the anemonefish_acoustics package
+COPY src/anemonefish_acoustics ${LAMBDA_TASK_ROOT}/anemonefish_acoustics/
+
+# Copy configuration
+COPY config/inference_config.yaml ${LAMBDA_TASK_ROOT}/config/
+
+# Copy model (this will be overridden by S3 in production)
+# For local testing, we'll mount or copy a specific model
+ARG MODEL_PATH=models/target_to_noise_classifier/trial0_dropout_300ep_20251102_225658/best_model.keras
+COPY ${MODEL_PATH} ${LAMBDA_TASK_ROOT}/model/best_model.keras
+
+# Set environment variables
+ENV MODEL_LOCAL_PATH=/var/task/model/best_model.keras
+ENV CONFIG_PATH=/var/task/config/inference_config.yaml
+ENV PYTHONPATH=/var/task:${PYTHONPATH}
+
+# Set the Lambda handler
+CMD ["anemonefish_acoustics.lambda.inference_handler.handler"]
+

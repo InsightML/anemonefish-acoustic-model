@@ -275,21 +275,52 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         content_type = event.get('headers', {}).get('Content-Type', '') or \
                       event.get('headers', {}).get('content-type', '')
         
-        # Handle multipart form data
-        form_data = decode_multipart_body(body, content_type)
-        audio_data = form_data.get('audio_data')
+        # Parse request body
+        try:
+            request_body = json.loads(body) if isinstance(body, str) else body
+        except:
+            request_body = {}
         
-        # Alternative: handle direct base64 audio
-        if not audio_data:
-            # Try to parse as JSON with base64 audio
+        audio_data = None
+        tmp_audio_path = None
+        
+        # Method 1: S3 reference (for large files)
+        if 's3_bucket' in request_body and 's3_key' in request_body:
+            s3_bucket = request_body['s3_bucket']
+            s3_key = request_body['s3_key']
+            
+            if boto3 is None:
+                return {
+                    'statusCode': 500,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'error': 'S3 not available', 'message': 'boto3 not installed'})
+                }
+            
             try:
-                request_body = json.loads(body) if isinstance(body, str) else body
-                if 'audio_base64' in request_body:
-                    audio_data = base64.b64decode(request_body['audio_base64'])
-                elif 'audio_file' in request_body:
-                    audio_data = base64.b64decode(request_body['audio_file'])
-            except:
-                pass
+                s3_client = boto3.client('s3', endpoint_url=os.getenv('AWS_ENDPOINT_URL'))
+                tmp_audio_path = f"/tmp/{os.path.basename(s3_key)}"
+                s3_client.download_file(s3_bucket, s3_key, tmp_audio_path)
+                
+                with open(tmp_audio_path, 'rb') as f:
+                    audio_data = f.read()
+            except ClientError as e:
+                return {
+                    'statusCode': 400,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'error': 'S3 download failed', 'message': str(e)})
+                }
+        
+        # Method 2: Handle multipart form data
+        if not audio_data:
+            form_data = decode_multipart_body(body, content_type)
+            audio_data = form_data.get('audio_data')
+        
+        # Method 3: Handle direct base64 audio
+        if not audio_data:
+            if 'audio_base64' in request_body:
+                audio_data = base64.b64decode(request_body['audio_base64'])
+            elif 'audio_file' in request_body:
+                audio_data = base64.b64decode(request_body['audio_file'])
         
         if not audio_data:
             return {
@@ -300,7 +331,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 },
                 'body': json.dumps({
                     'error': 'Missing audio data',
-                    'message': 'No audio file found in request'
+                    'message': 'No audio file found in request. Provide s3_bucket/s3_key or audio_file (base64)'
                 })
             }
         

@@ -6,9 +6,13 @@ set -e
 # Configuration
 PROJECT_NAME="${PROJECT_NAME:-anemonefish-inference}"
 ENVIRONMENT="${ENVIRONMENT:-dev}"
-AWS_REGION="${AWS_REGION:-us-east-1}"
+AWS_REGION="${AWS_REGION:-eu-west-2}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
-DOCKERFILE="${DOCKERFILE:-../../docker/Dockerfile.inference}"
+
+# Get script directory and project root
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+DOCKERFILE="${DOCKERFILE:-$PROJECT_ROOT/docker/Dockerfile.inference}"
 
 # Get AWS account ID
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -29,8 +33,16 @@ echo "Environment:  $ENVIRONMENT"
 echo "Region:       $AWS_REGION"
 echo "Image Tag:    $IMAGE_TAG"
 echo "ECR Repo:     $ECR_REPOSITORY_URI"
+echo "Dockerfile:   $DOCKERFILE"
+echo "Project Root: $PROJECT_ROOT"
 echo "=========================================="
 echo ""
+
+# Verify Dockerfile exists
+if [ ! -f "$DOCKERFILE" ]; then
+    echo "Error: Dockerfile not found at $DOCKERFILE"
+    exit 1
+fi
 
 # Check if ECR repository exists
 if ! aws ecr describe-repositories --repository-names "$ECR_REPO_NAME" --region "$AWS_REGION" > /dev/null 2>&1; then
@@ -52,10 +64,10 @@ echo "Logging in to ECR..."
 aws ecr get-login-password --region "$AWS_REGION" | \
     docker login --username AWS --password-stdin "$ECR_REPOSITORY_URI"
 
-# Build Docker image
+# Build Docker image (from project root)
 echo ""
 echo "Building Docker image..."
-cd "$(dirname "$0")/../.."  # Go to project root
+cd "$PROJECT_ROOT"
 docker build \
     -f "$DOCKERFILE" \
     -t "${PROJECT_NAME}:${IMAGE_TAG}" \

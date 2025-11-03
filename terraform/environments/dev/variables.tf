@@ -5,8 +5,9 @@ variable "project_name" {
 }
 
 variable "model_s3_bucket" {
-  description = "S3 bucket name for model artifacts (must exist or be created separately)"
+  description = "S3 bucket name for model artifacts. If null, the model_bucket module will be used (must uncomment module in main.tf)"
   type        = string
+  default     = null
 }
 
 variable "model_s3_key" {
@@ -23,6 +24,12 @@ variable "model_version" {
 
 variable "lambda_image_uri" {
   description = "ECR image URI for Lambda container. If null, uses ECR module output with :latest tag"
+  type        = string
+  default     = null
+}
+
+variable "aws_region" {
+  description = "AWS region for deployment (defaults to provider region)"
   type        = string
   default     = null
 }

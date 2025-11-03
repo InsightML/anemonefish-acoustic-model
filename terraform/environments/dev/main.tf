@@ -8,20 +8,36 @@ terraform {
     }
   }
 
-  backend "s3" {
-    # Configure backend with: terraform init -backend-config=backend.hcl
-    # Or use local backend for dev: remove backend block
-    bucket         = null  # Set your Terraform state bucket
-    key            = "anemonefish-inference/dev/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = null  # Set your DynamoDB table for state locking
-  }
+  # Backend configuration (uncomment and configure for remote state)
+  # backend "s3" {
+  #   bucket         = "your-terraform-state-bucket"
+  #   key            = "anemonefish-inference/dev/terraform.tfstate"
+  #   region         = "eu-west-2"
+  #   encrypt        = true
+  #   dynamodb_table = "your-state-lock-table"
+  # }
 }
 
 # Data source for AWS account
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
+
+# ============================================================================
+# MODEL BUCKET (Optional - uncomment if you want Terraform to create it)
+# ============================================================================
+
+# module "model_bucket" {
+#   source = "../../modules/model-bucket"
+# 
+#   project_name = var.project_name
+#   environment  = "dev"
+# 
+#   lifecycle_policy_enabled = true
+#   glacier_transition_days  = 90
+#   delete_old_versions      = false
+# 
+#   tags = var.tags
+# }
 
 # ============================================================================
 # ECR REPOSITORY
@@ -50,9 +66,11 @@ module "inference" {
 
   project_name = var.project_name
   environment  = "dev"
-  aws_region   = data.aws_region.current.name
+  aws_region   = var.aws_region != null ? var.aws_region : data.aws_region.current.name
 
   # Model configuration (adjust as needed)
+  # Option 1: Provide bucket name via var.model_s3_bucket
+  # Option 2: Uncomment model_bucket module above and use: model_s3_bucket = module.model_bucket.bucket_name
   model_s3_bucket = var.model_s3_bucket
   model_s3_key    = var.model_s3_key
   model_version   = var.model_version

@@ -55,9 +55,7 @@ def load_config() -> Dict[str, Any]:
             'hop_length': int(os.environ.get('HOP_LENGTH', 256)),
             'width_pixels': int(os.environ.get('WIDTH_PIXELS', 256)),
             'height_pixels': int(os.environ.get('HEIGHT_PIXELS', 256)),
-            'target_sr': os.environ.get('TARGET_SR'),
-            'normalization_mean': [0.485, 0.456, 0.406],
-            'normalization_std': [0.229, 0.224, 0.225]
+            'target_sr': os.environ.get('TARGET_SR')
         },
         'window': {
             'window_duration': float(os.environ.get('WINDOW_DURATION', 1.0)),
@@ -127,7 +125,7 @@ def initialize_model():
     
     _config = load_config()
     
-    # Initialize preprocessor
+    # Initialize preprocessor (NO ImageNet normalization - matches training)
     spec_config = _config['spectrogram']
     _preprocessor = AudioPreprocessor(
         fmax=spec_config['fmax'],
@@ -135,9 +133,7 @@ def initialize_model():
         hop_length=spec_config['hop_length'],
         width_pixels=spec_config['width_pixels'],
         height_pixels=spec_config['height_pixels'],
-        target_sr=spec_config.get('target_sr'),
-        normalization_mean=spec_config.get('normalization_mean'),
-        normalization_std=spec_config.get('normalization_std')
+        target_sr=spec_config.get('target_sr')
     )
     
     # Load model

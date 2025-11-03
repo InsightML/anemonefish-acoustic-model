@@ -25,6 +25,7 @@ class AudioPreprocessor:
     - N_FFT=1024
     - HOP_LENGTH=256
     - Output size: 256x256 pixels
+    - Normalization: [0, 1] by dividing by 255.0 (NO ImageNet normalization)
     """
     
     def __init__(
@@ -34,9 +35,7 @@ class AudioPreprocessor:
         hop_length: int = 256,
         width_pixels: int = 256,
         height_pixels: int = 256,
-        target_sr: Optional[int] = None,
-        normalization_mean: Optional[List[float]] = None,
-        normalization_std: Optional[List[float]] = None
+        target_sr: Optional[int] = None
     ):
         """
         Initialize AudioPreprocessor with configuration.
@@ -55,10 +54,6 @@ class AudioPreprocessor:
             Output spectrogram height in pixels. Default: 256
         target_sr : int, optional
             Target sampling rate. If None, uses original sample rate.
-        normalization_mean : List[float], optional
-            Mean values for normalization (ImageNet default: [0.485, 0.456, 0.406])
-        normalization_std : List[float], optional
-            Std values for normalization (ImageNet default: [0.229, 0.224, 0.225])
         """
         self.fmax = fmax
         self.n_fft = n_fft
@@ -66,10 +61,6 @@ class AudioPreprocessor:
         self.width_pixels = width_pixels
         self.height_pixels = height_pixels
         self.target_sr = target_sr
-        
-        # Default to ImageNet normalization if not specified
-        self.normalization_mean = normalization_mean or [0.485, 0.456, 0.406]
-        self.normalization_std = normalization_std or [0.229, 0.224, 0.225]
     
     def load_audio(self, audio_path: str) -> Tuple[Optional[np.ndarray], Optional[int], Optional[float]]:
         """
@@ -225,11 +216,9 @@ class AudioPreprocessor:
                 # Resize to exact dimensions
                 spectrogram = cv2.resize(buf, (self.width_pixels, self.height_pixels))
                 
-                # Normalize (matches training)
+                # Normalize to [0, 1] by dividing by 255.0 (matches training - NO ImageNet normalization)
+                # Training: image = tf.cast(image, tf.float32) / 255.0
                 spectrogram = spectrogram.astype(np.float32) / 255.0
-                mean = np.array(self.normalization_mean)
-                std = np.array(self.normalization_std)
-                spectrogram = (spectrogram - mean) / std
                 
                 return spectrogram
             else:

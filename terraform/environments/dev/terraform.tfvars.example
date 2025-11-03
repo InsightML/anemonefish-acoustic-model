@@ -1,0 +1,19 @@
+# Example Terraform variables for dev environment
+# Copy this to terraform.tfvars and customize
+
+project_name = "anemonefish-inference"
+
+# Model configuration
+model_s3_bucket = "your-model-artifacts-bucket"
+model_s3_key    = "models/v1.0/best_model.keras"
+model_version   = "v1.0"
+
+# Lambda image URI (optional - will use ECR repo :latest if not set)
+# lambda_image_uri = "123456789012.dkr.ecr.us-east-1.amazonaws.com/anemonefish-inference-dev:latest"
+
+# Tags
+tags = {
+  Owner       = "ml-team"
+  CostCenter  = "research"
+  Project     = "anemonefish-acoustics"
+}

@@ -15,8 +15,8 @@ spectrogram:
 
 # Sliding Window Parameters
 window:
-  window_duration: 1.0   # seconds (matches training)
-  stride_duration: 0.4    # seconds (0.4s windows for inference)
+  window_duration: 0.4   # seconds (matches training)
+  stride_duration: 0.2    # seconds (0.4s windows for inference)
   min_duration: 0.1      # minimum segment duration to process
 
 # Prediction Parameters

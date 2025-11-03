@@ -62,8 +62,8 @@ def load_config() -> Dict[str, Any]:
             'target_sr': os.environ.get('TARGET_SR')
         },
         'window': {
-            'window_duration': float(os.environ.get('WINDOW_DURATION', 1.0)),
-            'stride_duration': float(os.environ.get('STRIDE_DURATION', 0.4))
+            'window_duration': float(os.environ.get('WINDOW_DURATION', 0.4)),
+            'stride_duration': float(os.environ.get('STRIDE_DURATION', 0.2))
         },
         'prediction': {
             'batch_size': int(os.environ.get('BATCH_SIZE', 32)),

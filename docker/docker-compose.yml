@@ -20,6 +20,27 @@ services:
     networks:
       - anemonefish-network
 
+  # API Gateway proxy (for frontend testing)
+  api-gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.proxy
+    container_name: anemonefish-api-gateway
+    ports:
+      - "8000:8000"  # API endpoint for frontend
+    environment:
+      - LAMBDA_ENDPOINT=http://inference-lambda:8080/2015-03-31/functions/function/invocations
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - S3_INPUT_BUCKET=anemonefish-inference-input
+    networks:
+      - anemonefish-network
+    depends_on:
+      - inference-lambda
+      - localstack
+
   # Inference Lambda function (for local testing)
   inference-lambda:
     build:

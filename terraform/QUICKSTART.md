@@ -12,44 +12,48 @@ aws sts get-caller-identity
 terraform version
 ```
 
-## Step 1: Upload Model to S3
+## Step 1: Create Model Bucket
+
+**Option A: Use helper script (Recommended)**
+```bash
+cd terraform/scripts
+export AWS_REGION=eu-west-2
+export ENVIRONMENT=dev
+./create-model-bucket.sh
+```
+
+**Option B: Let Terraform create it**
+- Uncomment `model_bucket` module in `environments/dev/main.tf`
+- Set `model_s3_bucket = null` in `terraform.tfvars`
+
+## Step 2: Upload Model to S3
 
 ```bash
 aws s3 cp models/your_model.keras \
-  s3://your-model-bucket/models/v1.0/best_model.keras
+  s3://your-model-bucket/models/v1.0/best_model.keras \
+  --region eu-west-2
 ```
 
-## Step 2: Configure Environment
+## Step 3: Configure Environment
 
 ```bash
 cd terraform/environments/dev
 cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your values
+# Edit terraform.tfvars with your values:
+# - aws_region = "eu-west-2"
+# - model_s3_bucket = "your-bucket-name"
 ```
 
-## Step 3: Build and Push Docker Image
+## Step 4: Build and Push Docker Image
 
 ```bash
-# Option A: Use the helper script
 cd terraform/scripts
-export AWS_REGION=us-east-1
+export AWS_REGION=eu-west-2
 export ENVIRONMENT=dev
 ./build-and-push.sh
-
-# Option B: Manual steps
-export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-export AWS_REGION=us-east-1
-aws ecr get-login-password --region $AWS_REGION | \
-  docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
-
-cd /workspace
-docker build -f docker/Dockerfile.inference -t anemonefish-inference:latest .
-docker tag anemonefish-inference:latest \
-  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/anemonefish-inference-dev:latest
-docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/anemonefish-inference-dev:latest
 ```
 
-## Step 4: Deploy Infrastructure
+## Step 5: Deploy Infrastructure
 
 ```bash
 cd terraform/environments/dev
@@ -58,13 +62,13 @@ terraform plan
 terraform apply
 ```
 
-## Step 5: Get API Endpoint
+## Step 6: Get API Endpoint
 
 ```bash
 terraform output api_endpoint
 ```
 
-## Step 6: Test API
+## Step 7: Test API
 
 ```bash
 export API_ENDPOINT=$(terraform output -raw api_endpoint)

@@ -27,3 +27,9 @@ output "ecr_repository_name" {
   description = "ECR repository name"
   value       = module.ecr.repository_name
 }
+
+# Uncomment if using model_bucket module
+# output "model_bucket_name" {
+#   description = "Model artifacts bucket name"
+#   value       = module.model_bucket.bucket_name
+# }

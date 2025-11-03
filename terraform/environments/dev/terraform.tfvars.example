@@ -3,8 +3,15 @@
 
 project_name = "anemonefish-inference"
 
+# AWS Region (optional, defaults to provider region)
+aws_region = "eu-west-2"
+
 # Model configuration
+# Option 1: Use existing bucket
 model_s3_bucket = "your-model-artifacts-bucket"
+# Option 2: Let Terraform create bucket (uncomment model_bucket module in main.tf first)
+# model_s3_bucket = null
+
 model_s3_key    = "models/v1.0/best_model.keras"
 model_version   = "v1.0"
 

@@ -34,6 +34,12 @@ variable "aws_region" {
   default     = null
 }
 
+variable "enable_api_key" {
+  description = "Enable API key authentication for API Gateway"
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Additional tags for resources"
   type        = map(string)

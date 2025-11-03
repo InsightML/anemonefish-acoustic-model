@@ -15,22 +15,22 @@ output "lambda_function_invoke_arn" {
 
 output "api_gateway_id" {
   description = "ID of the API Gateway REST API"
-  value       = aws_apigateway_rest_api.inference_api.id
+  value       = aws_api_gateway_rest_api.inference_api.id
 }
 
 output "api_gateway_url" {
   description = "URL of the API Gateway endpoint"
-  value       = "https://${aws_apigateway_rest_api.inference_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_apigateway_stage.inference_api.stage_name}"
+  value       = "https://${aws_api_gateway_rest_api.inference_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_api_gateway_stage.inference_api.stage_name}"
 }
 
 output "api_gateway_predict_endpoint" {
   description = "Full URL of the /predict endpoint"
-  value       = "${aws_apigateway_rest_api.inference_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_apigateway_stage.inference_api.stage_name}/predict"
+  value       = "${aws_api_gateway_rest_api.inference_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_api_gateway_stage.inference_api.stage_name}/predict"
 }
 
 output "api_gateway_predict_url" {
   description = "Full HTTPS URL of the /predict endpoint"
-  value       = "https://${aws_apigateway_rest_api.inference_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_apigateway_stage.inference_api.stage_name}/predict"
+  value       = "https://${aws_api_gateway_rest_api.inference_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_api_gateway_stage.inference_api.stage_name}/predict"
 }
 
 output "s3_input_bucket_name" {
@@ -60,12 +60,12 @@ output "lambda_execution_role_arn" {
 
 output "api_key_id" {
   description = "API Key ID (if enabled)"
-  value       = var.enable_api_key ? aws_apigateway_api_key.inference_api_key[0].id : null
+  value       = var.enable_api_key ? aws_api_gateway_api_key.inference_api_key[0].id : null
 }
 
 output "api_key_value" {
   description = "API Key value (if enabled). Store this securely."
-  value       = var.enable_api_key ? aws_apigateway_api_key.inference_api_key[0].value : null
+  value       = var.enable_api_key ? aws_api_gateway_api_key.inference_api_key[0].value : null
   sensitive   = true
 }
 

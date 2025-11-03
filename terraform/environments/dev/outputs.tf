@@ -28,6 +28,17 @@ output "ecr_repository_name" {
   value       = module.ecr.repository_name
 }
 
+output "api_key_id" {
+  description = "API Gateway API Key ID (if enabled)"
+  value       = module.inference.api_key_id
+}
+
+output "api_key_value" {
+  description = "API Gateway API Key value (SENSITIVE - store securely)"
+  value       = module.inference.api_key_value
+  sensitive   = true
+}
+
 # Uncomment if using model_bucket module
 # output "model_bucket_name" {
 #   description = "Model artifacts bucket name"

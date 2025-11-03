@@ -75,6 +75,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "input" {
     id     = "delete_old_files"
     status = "Enabled"
 
+    filter {}
+
     expiration {
       days = var.s3_input_expiration_days
     }
@@ -121,6 +123,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "output" {
   rule {
     id     = "delete_old_results"
     status = "Enabled"
+
+    filter {}
 
     expiration {
       days = var.s3_output_expiration_days
@@ -269,7 +273,7 @@ resource "aws_lambda_function" "inference" {
 # ============================================================================
 
 # REST API
-resource "aws_apigateway_rest_api" "inference_api" {
+resource "aws_api_gateway_rest_api" "inference_api" {
   name        = "${local.name_prefix}-api"
   description = "API Gateway for anemonefish audio inference"
 
@@ -287,8 +291,8 @@ resource "aws_apigateway_rest_api" "inference_api" {
 }
 
 # CORS Configuration
-resource "aws_apigateway_gateway_response" "cors" {
-  rest_api_id   = aws_apigateway_rest_api.inference_api.id
+resource "aws_api_gateway_gateway_response" "cors" {
+  rest_api_id   = aws_api_gateway_rest_api.inference_api.id
   response_type = "DEFAULT_4XX"
 
   response_templates = {
@@ -298,14 +302,14 @@ resource "aws_apigateway_gateway_response" "cors" {
   }
 
   response_parameters = {
-    "gatewayresponse.header.Access-Control-Allow-Origin"  = join(",", var.cors_allowed_origins)
+    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'${join(",", var.cors_allowed_origins)}'"
     "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
     "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST'"
   }
 }
 
 # API Key (optional)
-resource "aws_apigateway_api_key" "inference_api_key" {
+resource "aws_api_gateway_api_key" "inference_api_key" {
   count = var.enable_api_key ? 1 : 0
   
   name = "${local.name_prefix}-api-key"
@@ -314,26 +318,26 @@ resource "aws_apigateway_api_key" "inference_api_key" {
 }
 
 # Usage Plan (optional)
-resource "aws_apigateway_usage_plan" "inference_usage_plan" {
+resource "aws_api_gateway_usage_plan" "inference_usage_plan" {
   count = var.enable_api_key ? 1 : 0
 
   name        = "${local.name_prefix}-usage-plan"
   description = "Usage plan for inference API"
 
   api_stages {
-    api_id = aws_apigateway_rest_api.inference_api.id
-    stage  = aws_apigateway_stage.inference_api.stage_name
+    api_id = aws_api_gateway_rest_api.inference_api.id
+    stage  = aws_api_gateway_stage.inference_api.stage_name
   }
 
   tags = local.common_tags
 }
 
-resource "aws_apigateway_usage_plan_key" "inference_usage_plan_key" {
+resource "aws_api_gateway_usage_plan_key" "inference_usage_plan_key" {
   count = var.enable_api_key ? 1 : 0
 
-  key_id        = aws_apigateway_api_key.inference_api_key[0].id
+  key_id        = aws_api_gateway_api_key.inference_api_key[0].id
   key_type      = "API_KEY"
-  usage_plan_id = aws_apigateway_usage_plan.inference_usage_plan[0].id
+  usage_plan_id = aws_api_gateway_usage_plan.inference_usage_plan[0].id
 }
 
 # Lambda Permission for API Gateway
@@ -342,28 +346,28 @@ resource "aws_lambda_permission" "api_gateway" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.inference.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigateway_rest_api.inference_api.execution_arn}/*/*"
+  source_arn    = "${aws_api_gateway_rest_api.inference_api.execution_arn}/*/*"
 }
 
 # /predict resource
-resource "aws_apigateway_resource" "predict" {
-  rest_api_id = aws_apigateway_rest_api.inference_api.id
-  parent_id   = aws_apigateway_rest_api.inference_api.root_resource_id
+resource "aws_api_gateway_resource" "predict" {
+  rest_api_id = aws_api_gateway_rest_api.inference_api.id
+  parent_id   = aws_api_gateway_rest_api.inference_api.root_resource_id
   path_part   = "predict"
 }
 
 # OPTIONS method for CORS preflight
-resource "aws_apigateway_method" "predict_options" {
-  rest_api_id   = aws_apigateway_rest_api.inference_api.id
-  resource_id   = aws_apigateway_resource.predict.id
+resource "aws_api_gateway_method" "predict_options" {
+  rest_api_id   = aws_api_gateway_rest_api.inference_api.id
+  resource_id   = aws_api_gateway_resource.predict.id
   http_method   = "OPTIONS"
   authorization = "NONE"
 }
 
-resource "aws_apigateway_integration" "predict_options" {
-  rest_api_id = aws_apigateway_rest_api.inference_api.id
-  resource_id = aws_apigateway_resource.predict.id
-  http_method = aws_apigateway_method.predict_options.http_method
+resource "aws_api_gateway_integration" "predict_options" {
+  rest_api_id = aws_api_gateway_rest_api.inference_api.id
+  resource_id = aws_api_gateway_resource.predict.id
+  http_method = aws_api_gateway_method.predict_options.http_method
   type        = "MOCK"
 
   request_templates = {
@@ -373,10 +377,10 @@ resource "aws_apigateway_integration" "predict_options" {
   }
 }
 
-resource "aws_apigateway_method_response" "predict_options" {
-  rest_api_id = aws_apigateway_rest_api.inference_api.id
-  resource_id = aws_apigateway_resource.predict.id
-  http_method = aws_apigateway_method.predict_options.http_method
+resource "aws_api_gateway_method_response" "predict_options" {
+  rest_api_id = aws_api_gateway_rest_api.inference_api.id
+  resource_id = aws_api_gateway_resource.predict.id
+  http_method = aws_api_gateway_method.predict_options.http_method
   status_code = "200"
 
   response_parameters = {
@@ -390,43 +394,44 @@ resource "aws_apigateway_method_response" "predict_options" {
   }
 }
 
-resource "aws_apigateway_integration_response" "predict_options" {
-  rest_api_id = aws_apigateway_rest_api.inference_api.id
-  resource_id = aws_apigateway_resource.predict.id
-  http_method = aws_apigateway_method.predict_options.http_method
-  status_code = aws_apigateway_method_response.predict_options.status_code
+resource "aws_api_gateway_integration_response" "predict_options" {
+  rest_api_id = aws_api_gateway_rest_api.inference_api.id
+  resource_id = aws_api_gateway_resource.predict.id
+  http_method = aws_api_gateway_method.predict_options.http_method
+  status_code = aws_api_gateway_method_response.predict_options.status_code
 
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
     "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST'"
-    "method.response.header.Access-Control-Allow-Origin"  = join(",", var.cors_allowed_origins)
+    "method.response.header.Access-Control-Allow-Origin"  = "'${join(",", var.cors_allowed_origins)}'"
   }
 
-  depends_on = [aws_apigateway_integration.predict_options]
+  depends_on = [aws_api_gateway_integration.predict_options]
 }
 
 # POST method for /predict
-resource "aws_apigateway_method" "predict_post" {
-  rest_api_id   = aws_apigateway_rest_api.inference_api.id
-  resource_id   = aws_apigateway_resource.predict.id
-  http_method   = "POST"
-  authorization = var.enable_api_key ? "API_KEY" : "NONE"
+resource "aws_api_gateway_method" "predict_post" {
+  rest_api_id      = aws_api_gateway_rest_api.inference_api.id
+  resource_id      = aws_api_gateway_resource.predict.id
+  http_method      = "POST"
+  authorization    = "NONE"
+  api_key_required = var.enable_api_key
 }
 
-resource "aws_apigateway_integration" "predict_post" {
-  rest_api_id = aws_apigateway_rest_api.inference_api.id
-  resource_id = aws_apigateway_resource.predict.id
-  http_method = aws_apigateway_method.predict_post.http_method
+resource "aws_api_gateway_integration" "predict_post" {
+  rest_api_id = aws_api_gateway_rest_api.inference_api.id
+  resource_id = aws_api_gateway_resource.predict.id
+  http_method = aws_api_gateway_method.predict_post.http_method
 
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.inference.invoke_arn
 }
 
-resource "aws_apigateway_method_response" "predict_post" {
-  rest_api_id = aws_apigateway_rest_api.inference_api.id
-  resource_id = aws_apigateway_resource.predict.id
-  http_method = aws_apigateway_method.predict_post.http_method
+resource "aws_api_gateway_method_response" "predict_post" {
+  rest_api_id = aws_api_gateway_rest_api.inference_api.id
+  resource_id = aws_api_gateway_resource.predict.id
+  http_method = aws_api_gateway_method.predict_post.http_method
   status_code = "200"
 
   response_parameters = {
@@ -438,35 +443,35 @@ resource "aws_apigateway_method_response" "predict_post" {
   }
 }
 
-resource "aws_apigateway_integration_response" "predict_post" {
-  rest_api_id = aws_apigateway_rest_api.inference_api.id
-  resource_id = aws_apigateway_resource.predict.id
-  http_method = aws_apigateway_method.predict_post.http_method
-  status_code = aws_apigateway_method_response.predict_post.status_code
+resource "aws_api_gateway_integration_response" "predict_post" {
+  rest_api_id = aws_api_gateway_rest_api.inference_api.id
+  resource_id = aws_api_gateway_resource.predict.id
+  http_method = aws_api_gateway_method.predict_post.http_method
+  status_code = aws_api_gateway_method_response.predict_post.status_code
 
   response_parameters = {
     "method.response.header.Access-Control-Allow-Origin" = "'*'"
   }
 
-  depends_on = [aws_apigateway_integration.predict_post]
+  depends_on = [aws_api_gateway_integration.predict_post]
 }
 
 # API Gateway Deployment
-resource "aws_apigateway_deployment" "inference_api" {
+resource "aws_api_gateway_deployment" "inference_api" {
   depends_on = [
-    aws_apigateway_method.predict_post,
-    aws_apigateway_integration.predict_post,
-    aws_apigateway_method.predict_options,
-    aws_apigateway_integration.predict_options
+    aws_api_gateway_method.predict_post,
+    aws_api_gateway_integration.predict_post,
+    aws_api_gateway_method.predict_options,
+    aws_api_gateway_integration.predict_options
   ]
 
-  rest_api_id = aws_apigateway_rest_api.inference_api.id
+  rest_api_id = aws_api_gateway_rest_api.inference_api.id
 
   triggers = {
     redeployment = sha1(jsonencode([
-      aws_apigateway_resource.predict.id,
-      aws_apigateway_method.predict_post.id,
-      aws_apigateway_method.predict_options.id
+      aws_api_gateway_resource.predict.id,
+      aws_api_gateway_method.predict_post.id,
+      aws_api_gateway_method.predict_options.id
     ]))
   }
 
@@ -476,26 +481,28 @@ resource "aws_apigateway_deployment" "inference_api" {
 }
 
 # API Gateway Stage
-resource "aws_apigateway_stage" "inference_api" {
-  deployment_id = aws_apigateway_deployment.inference_api.id
-  rest_api_id   = aws_apigateway_rest_api.inference_api.id
+resource "aws_api_gateway_stage" "inference_api" {
+  deployment_id = aws_api_gateway_deployment.inference_api.id
+  rest_api_id   = aws_api_gateway_rest_api.inference_api.id
   stage_name    = var.api_gateway_stage_name
 
-  access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.api_gateway.arn
-    format = jsonencode({
-      requestId      = "$context.requestId"
-      ip             = "$context.identity.sourceIp"
-      caller         = "$context.identity.caller"
-      user           = "$context.identity.user"
-      requestTime    = "$context.requestTime"
-      httpMethod     = "$context.httpMethod"
-      resourcePath   = "$context.resourcePath"
-      status         = "$context.status"
-      protocol       = "$context.protocol"
-      responseLength = "$context.responseLength"
-    })
-  }
+  # Note: access_log_settings requires CloudWatch Logs role ARN to be set in account settings
+  # Uncomment and configure if needed:
+  # access_log_settings {
+  #   destination_arn = aws_cloudwatch_log_group.api_gateway.arn
+  #   format = jsonencode({
+  #     requestId      = "$context.requestId"
+  #     ip             = "$context.identity.sourceIp"
+  #     caller         = "$context.identity.caller"
+  #     user           = "$context.identity.user"
+  #     requestTime    = "$context.requestTime"
+  #     httpMethod     = "$context.httpMethod"
+  #     resourcePath   = "$context.resourcePath"
+  #     status         = "$context.status"
+  #     protocol       = "$context.protocol"
+  #     responseLength = "$context.responseLength"
+  #   })
+  # }
 
   tags = local.common_tags
 }

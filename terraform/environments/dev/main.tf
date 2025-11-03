@@ -87,7 +87,7 @@ module "inference" {
   # API Gateway configuration
   api_gateway_stage_name = "api"
   cors_allowed_origins   = ["*"]  # Allow all origins in dev
-  enable_api_key         = false  # No API key for dev
+  enable_api_key         = var.enable_api_key
 
   # Logging
   log_retention_days = 7  # Shorter retention for dev

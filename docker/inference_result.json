@@ -1,0 +1,1 @@
+{"errorMessage": "Unable to import module 'anemonefish_acoustics.lambda.inference_handler': No module named 'numpy'", "errorType": "Runtime.ImportModuleError", "requestId": "", "stackTrace": []}

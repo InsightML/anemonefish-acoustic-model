@@ -100,11 +100,12 @@ if command -v docker &> /dev/null; then
     echo -e "  $DOCKER_VERSION"
     
     if docker compose version &> /dev/null; then
-        echo -e "${GREEN}✓${NC} Docker Compose is available"
+        echo -e "${GREEN}✓${NC} Docker Compose V2 is available"
         COMPOSE_VERSION=$(docker compose version)
         echo -e "  $COMPOSE_VERSION"
     else
-        echo -e "${RED}✗${NC} Docker Compose not available"
+        echo -e "${RED}✗${NC} Docker Compose V2 not available"
+        echo -e "${YELLOW}  Note: Using 'docker compose' (V2), not 'docker-compose' (V1)${NC}"
         ERRORS=$((ERRORS + 1))
     fi
 else

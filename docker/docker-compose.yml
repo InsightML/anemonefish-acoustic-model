@@ -8,12 +8,13 @@ services:
       - "4571:4571"  # LocalStack legacy edge port
     environment:
       - SERVICES=s3,lambda,apigateway,cloudwatch
-      - DEBUG=1
-      - DATA_DIR=/tmp/localstack/data
+      - DEBUG=0
+      - LOCALSTACK_HOST=localstack
       - LAMBDA_EXECUTOR=docker-reuse
       - DOCKER_HOST=unix:///var/run/docker.sock
+      - PERSISTENCE=0
     volumes:
-      - localstack-data:/tmp/localstack
+      - localstack-data:/var/lib/localstack
       - /var/run/docker.sock:/var/run/docker.sock
       - ./init-localstack.sh:/etc/localstack/init/ready.d/init-localstack.sh
     networks:

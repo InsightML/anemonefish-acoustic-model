@@ -52,7 +52,7 @@ done
 cleanup() {
     echo -e "${YELLOW}Stopping containers...${NC}"
     cd "$SCRIPT_DIR"
-    docker-compose down
+    docker compose down
 }
 
 # Set trap for cleanup on exit
@@ -65,7 +65,7 @@ cd "$SCRIPT_DIR"
 # Build and start services
 if [ "$TEST_ONLY" = false ]; then
     echo -e "${GREEN}Starting services...${NC}"
-    docker-compose up $BUILD_FLAG -d localstack inference-lambda
+    docker compose up $BUILD_FLAG -d localstack inference-lambda
     
     echo -e "${YELLOW}Waiting for services to be ready...${NC}"
     sleep 10
@@ -79,7 +79,7 @@ if [ "$TEST_ONLY" = false ]; then
         fi
         if [ $i -eq 30 ]; then
             echo -e "${RED}LocalStack failed to start${NC}"
-            docker-compose logs localstack
+            docker compose logs localstack
             exit 1
         fi
         sleep 2
@@ -94,7 +94,7 @@ if [ "$TEST_ONLY" = false ]; then
         fi
         if [ $i -eq 30 ]; then
             echo -e "${RED}Lambda container failed to start${NC}"
-            docker-compose logs inference-lambda
+            docker compose logs inference-lambda
             exit 1
         fi
         sleep 2
@@ -103,7 +103,7 @@ fi
 
 # Run tests
 echo -e "${GREEN}Running integration tests...${NC}"
-docker-compose --profile test run --rm test-runner
+docker compose --profile test run --rm test-runner
 
 # Check test results
 if [ $? -eq 0 ]; then
@@ -117,7 +117,7 @@ else
     
     # Show logs
     echo -e "${YELLOW}Lambda logs:${NC}"
-    docker-compose logs --tail=50 inference-lambda
+    docker compose logs --tail=50 inference-lambda
     
     exit 1
 fi
@@ -132,8 +132,8 @@ echo "To test manually, use:"
 echo "  curl -XPOST \"http://localhost:9000/2015-03-31/functions/function/invocations\" -d '{...}'"
 echo ""
 echo "To view logs:"
-echo "  docker-compose logs -f inference-lambda"
+echo "  docker compose logs -f inference-lambda"
 echo ""
 echo "To stop services:"
-echo "  docker-compose down"
+echo "  docker compose down"
 

@@ -22,6 +22,10 @@ COPY src/anemonefish_acoustics ${LAMBDA_TASK_ROOT}/anemonefish_acoustics/
 # Copy configuration
 COPY config/inference_config.yaml ${LAMBDA_TASK_ROOT}/config/
 
+# Fix permissions for Lambda execution
+RUN chmod -R 755 ${LAMBDA_TASK_ROOT}/anemonefish_acoustics && \
+    find ${LAMBDA_TASK_ROOT}/anemonefish_acoustics -type f -name "*.py" -exec chmod 644 {} \;
+
 # Create model directory (model will be mounted or loaded from S3)
 # For local testing: Model is mounted via volume in docker-compose.yml
 # For production: Model is loaded from S3 at runtime

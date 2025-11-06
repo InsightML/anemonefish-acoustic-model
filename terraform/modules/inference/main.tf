@@ -67,6 +67,18 @@ resource "aws_s3_bucket_public_access_block" "input" {
   restrict_public_buckets  = true
 }
 
+resource "aws_s3_bucket_cors_configuration" "input" {
+  bucket = aws_s3_bucket.input.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "PUT", "POST", "DELETE", "HEAD"]
+    allowed_origins = var.cors_allowed_origins
+    expose_headers  = ["ETag", "x-amz-server-side-encryption", "x-amz-request-id", "x-amz-id-2"]
+    max_age_seconds = 3000
+  }
+}
+
 resource "aws_s3_bucket_lifecycle_configuration" "input" {
   bucket = aws_s3_bucket.input.id
   count  = var.s3_lifecycle_enabled && var.s3_input_expiration_days > 0 ? 1 : 0
@@ -257,6 +269,10 @@ resource "aws_lambda_function" "inference" {
       MIN_EVENT_DURATION     = tostring(var.inference_config.min_event_duration != null ? var.inference_config.min_event_duration : 0.2)
       MIN_GAP_DURATION       = tostring(var.inference_config.min_gap_duration != null ? var.inference_config.min_gap_duration : 0.1)
       SMOOTHING_WINDOW       = tostring(var.inference_config.smoothing_window != null ? var.inference_config.smoothing_window : 5)
+      
+      # Lambda Environment Fixes
+      NUMBA_CACHE_DIR        = "/tmp"
+      MPLCONFIGDIR           = "/tmp/matplotlib"
     }
   }
 
@@ -290,8 +306,8 @@ resource "aws_api_gateway_rest_api" "inference_api" {
   tags = local.common_tags
 }
 
-# CORS Configuration
-resource "aws_api_gateway_gateway_response" "cors" {
+# CORS Configuration for 4XX errors
+resource "aws_api_gateway_gateway_response" "cors_4xx" {
   rest_api_id   = aws_api_gateway_rest_api.inference_api.id
   response_type = "DEFAULT_4XX"
 
@@ -302,9 +318,29 @@ resource "aws_api_gateway_gateway_response" "cors" {
   }
 
   response_parameters = {
-    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'${join(",", var.cors_allowed_origins)}'"
-    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'*'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,x-api-key'"
     "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST'"
+    "gatewayresponse.header.Access-Control-Expose-Headers" = "'*'"
+  }
+}
+
+# CORS Configuration for 5XX errors
+resource "aws_api_gateway_gateway_response" "cors_5xx" {
+  rest_api_id   = aws_api_gateway_rest_api.inference_api.id
+  response_type = "DEFAULT_5XX"
+
+  response_templates = {
+    "application/json" = jsonencode({
+      message = "$context.error.message"
+    })
+  }
+
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'*'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,x-api-key'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST'"
+    "gatewayresponse.header.Access-Control-Expose-Headers" = "'*'"
   }
 }
 
@@ -387,6 +423,7 @@ resource "aws_api_gateway_method_response" "predict_options" {
     "method.response.header.Access-Control-Allow-Headers" = true
     "method.response.header.Access-Control-Allow-Methods" = true
     "method.response.header.Access-Control-Allow-Origin"  = true
+    "method.response.header.Access-Control-Expose-Headers" = true
   }
 
   response_models = {
@@ -401,9 +438,10 @@ resource "aws_api_gateway_integration_response" "predict_options" {
   status_code = aws_api_gateway_method_response.predict_options.status_code
 
   response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,x-api-key'"
     "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'${join(",", var.cors_allowed_origins)}'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+    "method.response.header.Access-Control-Expose-Headers" = "'*'"
   }
 
   depends_on = [aws_api_gateway_integration.predict_options]
@@ -436,6 +474,7 @@ resource "aws_api_gateway_method_response" "predict_post" {
 
   response_parameters = {
     "method.response.header.Access-Control-Allow-Origin" = true
+    "method.response.header.Access-Control-Expose-Headers" = true
   }
 
   response_models = {
@@ -451,6 +490,7 @@ resource "aws_api_gateway_integration_response" "predict_post" {
 
   response_parameters = {
     "method.response.header.Access-Control-Allow-Origin" = "'*'"
+    "method.response.header.Access-Control-Expose-Headers" = "'*'"
   }
 
   depends_on = [aws_api_gateway_integration.predict_post]

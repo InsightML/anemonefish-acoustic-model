@@ -77,7 +77,7 @@ module "inference" {
 
   # Lambda configuration
   lambda_timeout                   = 900  # 15 minutes
-  lambda_memory_size              = 3008  # Max memory for large audio processing
+  lambda_memory_size              = 10240  # 10GB - maximum memory for large audio files
   lambda_reserved_concurrent_executions = null  # Unlimited for dev
 
   # Lambda container image (must be built and pushed to ECR first)
@@ -86,7 +86,7 @@ module "inference" {
 
   # API Gateway configuration
   api_gateway_stage_name = "api"
-  cors_allowed_origins   = ["*"]  # Allow all origins in dev
+  cors_allowed_origins   = ["*"]  # Allow all origins (includes Surge domain)
   enable_api_key         = var.enable_api_key
 
   # Logging

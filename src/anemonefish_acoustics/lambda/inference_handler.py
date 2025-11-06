@@ -266,20 +266,24 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 })
             }
         
-        # Parse request
-        if event.get('isBase64Encoded'):
-            body = event.get('body', '')
-        else:
-            body = event.get('body', '')
+        # Parse request - handle both API Gateway and direct Lambda invocation
+        request_body = event
         
-        content_type = event.get('headers', {}).get('Content-Type', '') or \
-                      event.get('headers', {}).get('content-type', '')
-        
-        # Parse request body
-        try:
-            request_body = json.loads(body) if isinstance(body, str) else body
-        except:
-            request_body = {}
+        # If this is an API Gateway request, parse the body
+        if 'body' in event:
+            if event.get('isBase64Encoded'):
+                body = event.get('body', '')
+            else:
+                body = event.get('body', '')
+            
+            content_type = event.get('headers', {}).get('Content-Type', '') or \
+                          event.get('headers', {}).get('content-type', '')
+            
+            # Parse request body
+            try:
+                request_body = json.loads(body) if isinstance(body, str) and body else event
+            except:
+                request_body = event
         
         audio_data = None
         tmp_audio_path = None

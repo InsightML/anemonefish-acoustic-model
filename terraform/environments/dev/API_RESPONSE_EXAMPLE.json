@@ -1,0 +1,164 @@
+{
+  "_comment": "Real API response from production test with 44.8 MB audio file (8 minutes)",
+  "_test_file": "20230210_000001_LL_B55_M_R_with labels.wav",
+  
+  "predictions": [
+    {
+      "timestamp": "0.0-1.0s",
+      "class": "noise",
+      "confidence": 0.856,
+      "probabilities": {
+        "noise": 0.856,
+        "anemonefish": 0.089,
+        "biological": 0.055
+      }
+    },
+    {
+      "timestamp": "0.4-1.4s",
+      "class": "noise",
+      "confidence": 0.923,
+      "probabilities": {
+        "noise": 0.923,
+        "anemonefish": 0.012,
+        "biological": 0.065
+      }
+    },
+    {
+      "_comment": "... 1,220 more predictions (one per time window) ...",
+      "timestamp": "487.6-488.6s",
+      "class": "noise",
+      "confidence": 0.791,
+      "probabilities": {
+        "noise": 0.791,
+        "anemonefish": 0.134,
+        "biological": 0.075
+      }
+    }
+  ],
+  
+  "events": [
+    {
+      "start_time": 4.4,
+      "end_time": 5.4,
+      "duration": 1.0,
+      "mean_confidence": 0.575,
+      "max_confidence": 0.623,
+      "num_windows": 3,
+      "_display_as": "4.4s - 5.4s: Anemonefish (57.5%)"
+    },
+    {
+      "start_time": 54.0,
+      "end_time": 55.0,
+      "duration": 1.0,
+      "mean_confidence": 0.507,
+      "max_confidence": 0.541,
+      "num_windows": 3,
+      "_display_as": "54.0s - 55.0s: Anemonefish (50.7%)"
+    },
+    {
+      "start_time": 132.0,
+      "end_time": 133.4,
+      "duration": 1.4,
+      "mean_confidence": 0.533,
+      "max_confidence": 0.589,
+      "num_windows": 4,
+      "_display_as": "2:12 - 2:13: Anemonefish (53.3%)"
+    },
+    {
+      "start_time": 203.6,
+      "end_time": 205.4,
+      "duration": 1.8,
+      "mean_confidence": 0.676,
+      "max_confidence": 0.721,
+      "num_windows": 5,
+      "_display_as": "3:24 - 3:25: Anemonefish (67.6%) ⭐ HIGH CONFIDENCE"
+    },
+    {
+      "start_time": 306.8,
+      "end_time": 308.6,
+      "duration": 1.8,
+      "mean_confidence": 0.535,
+      "max_confidence": 0.598,
+      "num_windows": 5
+    },
+    {
+      "start_time": 325.2,
+      "end_time": 328.6,
+      "duration": 3.4,
+      "mean_confidence": 0.556,
+      "max_confidence": 0.612,
+      "num_windows": 9,
+      "_display_as": "5:25 - 5:29: Anemonefish (55.6%) - LONGEST EVENT"
+    },
+    {
+      "start_time": 392.0,
+      "end_time": 393.4,
+      "duration": 1.4,
+      "mean_confidence": 0.520,
+      "max_confidence": 0.567,
+      "num_windows": 4
+    },
+    {
+      "start_time": 398.4,
+      "end_time": 399.8,
+      "duration": 1.4,
+      "mean_confidence": 0.553,
+      "max_confidence": 0.601,
+      "num_windows": 4
+    },
+    {
+      "start_time": 466.0,
+      "end_time": 468.2,
+      "duration": 2.2,
+      "mean_confidence": 0.562,
+      "max_confidence": 0.614,
+      "num_windows": 6
+    },
+    {
+      "start_time": 474.8,
+      "end_time": 475.8,
+      "duration": 1.0,
+      "mean_confidence": 0.506,
+      "max_confidence": 0.543,
+      "num_windows": 3
+    },
+    {
+      "start_time": 477.2,
+      "end_time": 479.0,
+      "duration": 1.8,
+      "mean_confidence": 0.683,
+      "max_confidence": 0.729,
+      "num_windows": 5,
+      "_display_as": "7:57 - 7:59: Anemonefish (68.3%) ⭐ HIGH CONFIDENCE"
+    }
+  ],
+  
+  "metadata": {
+    "audio_duration_seconds": 488.8,
+    "processing_time_seconds": 95.2,
+    "model_version": "v1.0",
+    "num_predictions": 1222,
+    "num_events": 11,
+    "target_class": "anemonefish",
+    "confidence_threshold": 0.5,
+    
+    "_notes": {
+      "processing_speed": "~3 seconds per MB of audio",
+      "memory_used": "~3 GB for 8-minute audio",
+      "cost_estimate": "~$0.02 per inference"
+    }
+  },
+  
+  "_frontend_display_tips": {
+    "summary": "Show metadata.num_events prominently",
+    "event_list": "Display events array as timeline or list",
+    "confidence_colors": {
+      "high": ">= 0.7 (green)",
+      "medium": "0.5-0.7 (yellow)",
+      "low": "< 0.5 (filtered out by default)"
+    },
+    "predictions": "Optional: Show all predictions as detailed view or heatmap",
+    "timeline": "Plot events on audio timeline for visual reference"
+  }
+}
+

@@ -86,6 +86,7 @@ import matplotlib.pyplot as plt
 from numpy.lib.stride_tricks import sliding_window_view
 import pandas as pd
 import soundfile as sf
+import os
 
 from anemonefish_acoustics.utils.logger import get_logger
 logging = get_logger(__name__)
@@ -330,12 +331,12 @@ def extract_windows(audio_file,
     
     return windows
 
-def create_spectrogram(audio_data, sr_target=8000, n_fft=512, hop_length=256, fmax=2000):
+def create_spectrogram(audio_data, sr_target=8000, n_fft=512, hop_length=256, fmax=2000, normalize=False):
     """
     Converts audio window to frequency-domain spectrogram using STFT.
     
     Implementation: Applies Short-Time Fourier Transform, converts to decibels,
-    and crops to maximum frequency of interest.
+    crops to maximum frequency of interest, and optionally applies min-max normalization.
 
     Args:
         audio_data (numpy.ndarray): Audio samples for one window.
@@ -343,9 +344,11 @@ def create_spectrogram(audio_data, sr_target=8000, n_fft=512, hop_length=256, fm
         n_fft (int): FFT window size for STFT.
         hop_length (int): Number of samples between successive STFT windows.
         fmax (int): Maximum frequency in Hz. Crops spectrogram to this frequency.
+        normalize (bool): If True, applies min-max normalization to scale values to [0, 1] range.
     
     Returns:
         numpy.ndarray: Spectrogram in decibels, shape (frequency_bins, time_frames).
+                      If normalize=True, values are scaled to [0, 1] range.
     """
     # Compute Short-Time Fourier Transform (STFT)
     # The STFT will consider frequencies up to sr/2.
@@ -363,6 +366,15 @@ def create_spectrogram(audio_data, sr_target=8000, n_fft=512, hop_length=256, fm
         fmax_bin = int(fmax / (sr_target / 2.0) * num_frequency_bins)
         if fmax_bin < num_frequency_bins:
             S_db = S_db[:fmax_bin, :]
+
+    # Apply min-max normalization if requested
+    if normalize:
+        S_min = S_db.min()
+        S_max = S_db.max()
+        if S_max > S_min:  # Avoid division by zero
+            S_db = (S_db - S_min) / (S_max - S_min)
+        else:
+            S_db = np.zeros_like(S_db)  # Handle edge case where all values are the same
 
     return S_db
 
@@ -471,7 +483,7 @@ def process_segments_to_spectrograms(segments_audio_data, class_name,
                 padded_segment = pad_segment_to_window_size(segment, window_samples)
                 # Convert padded segment to spectrogram
                 spec = create_spectrogram(padded_segment, sr_target=sr_target, 
-                                        n_fft=n_fft, hop_length=hop_length, fmax=fmax)
+                                        n_fft=n_fft, hop_length=hop_length, fmax=fmax, normalize=True)
                 spectrograms.append(spec)
             else:
                 # For noise: skip short segments (can't extract windows from them)
@@ -491,13 +503,13 @@ def process_segments_to_spectrograms(segments_audio_data, class_name,
                         padding_ratio=noise_padding_params['padding_ratio']
                     )
                     spec = create_spectrogram(processed_window, sr_target=sr_target,
-                                            n_fft=n_fft, hop_length=hop_length, fmax=fmax)
+                                            n_fft=n_fft, hop_length=hop_length, fmax=fmax, normalize=True)
                     spectrograms.append(spec)
             else:
                 # For other classes, just convert windows to spectrograms
                 for window in windows:
                     spec = create_spectrogram(window, sr_target=sr_target,
-                                            n_fft=n_fft, hop_length=hop_length, fmax=fmax)
+                                            n_fft=n_fft, hop_length=hop_length, fmax=fmax, normalize=True)
                     spectrograms.append(spec)
     
     return spectrograms
@@ -563,67 +575,54 @@ def format_training_data(audio_data_segments, classes):
     return X, y, class_mappings
 
 
-def preprocess_audio_for_training(audio_buffer,
-                                  classes_path,
-                                  window_duration_s=0.4,
-                                  slide_duration_s=0.2,
-                                  sr_target=8000,
-                                  n_fft=1024,
-                                  hop_length=None,
-                                  fmax=2000,
-                                  logger=None,
-                                  classes=['noise', 'anemonefish', 'biological'],
-                                  min_segment_len_seconds=0.1,
-                                  noise_padding_params=None
-                                  ):
+def process_single_audio_file_for_training(audio_path, 
+                                          annotation_path,
+                                          window_duration_s=0.4,
+                                          slide_duration_s=0.2,
+                                          sr_target=8000,
+                                          n_fft=1024,
+                                          hop_length=None,
+                                          fmax=2000,
+                                          classes=['noise', 'anemonefish', 'biological'],
+                                          min_segment_len_seconds=0.1,
+                                          noise_padding_params=None):
     """
-    Preprocess audio file for training by segmenting based on annotations and converting to spectrograms.
+    Process a single audio file and its annotation into spectrograms by class.
     
     Pipeline:
     1. Read audio file and load class annotations from Audacity label file
     2. Split audio into labeled segments (by class) and noise segments (unlabeled regions)
     3. Segment audio data by classes
-    4. Extract windows from segments with padding logic:
-       - For anemonefish/biological: pad short segments to window size
-       - For noise: apply random shortening and padding to some windows
-    5. Create spectrograms from windows
-    6. Format into training-ready arrays with one-hot encoded labels
+    4. Create sliding window spectrograms from segments
     
     Args:
-        audio_buffer: File path or buffer containing audio data
-        classes_path: Path to Audacity label file with annotations
+        audio_path: Path to audio file (.wav)
+        annotation_path: Path to annotation file (.txt in Audacity label format)
         window_duration_s: Window size in seconds (default 0.4)
         slide_duration_s: Stride between windows in seconds (default 0.2)
         sr_target: Target sample rate in Hz (default 8000)
         n_fft: FFT size for spectrogram (default 1024)
         hop_length: STFT hop length (default n_fft//4)
         fmax: Maximum frequency for spectrogram (default 2000)
-        logger: Logger instance
         classes: List of class names (default ['noise', 'anemonefish', 'biological'])
         min_segment_len_seconds: Minimum segment duration (default 0.1)
-        noise_padding_params: Dict with noise padding parameters:
-            - min_duration_s: min duration for shortened noise (default 0.1)
-            - max_duration_s: max duration for shortened noise (default 0.35)
-            - padding_ratio: proportion of noise windows to shorten (default 0.3)
+        noise_padding_params: Dict with noise padding parameters
     
     Returns:
-        tuple: (X, y, class_mappings) where:
-            - X: numpy array of shape (N, freq_bins, time_frames) containing all spectrograms
-            - y: numpy array of shape (N, num_classes) containing one-hot encoded labels
-            - class_mappings: dict mapping class indices to class names {0: 'noise', 1: 'anemonefish', ...}
+        dict: {class_name: [spectrograms]} for this file
     """
     if hop_length is None:
         hop_length = n_fft // 4 # Default hop length is 1/4 of n_fft
     
     # 1. Load audio data using soundfile
-    audio_data, sample_rate = sf.read(audio_buffer)
+    audio_data, sample_rate = sf.read(audio_path)
     
     # Convert to mono if stereo
     if audio_data.ndim > 1:
         audio_data = np.mean(audio_data, axis=1)
 
     # Load classes data from txt
-    classes_segments = parse_audacity_labels(classes_path)
+    classes_segments = parse_audacity_labels(annotation_path)
 
     # 2. Split audio file into classes and noise segments
     total_duration_seconds = len(audio_data) / sample_rate
@@ -640,7 +639,7 @@ def preprocess_audio_for_training(audio_buffer,
         segments_audio_data = segment_audio_data(audio_data, segments, sample_rate)
         logging.info(f"Segmented {len(segments_audio_data)} segments for class {class_name}")
         
-        # Process segments to spectrograms using the new helper function
+        # 4. Process segments to spectrograms
         spectrograms = process_segments_to_spectrograms(
             segments_audio_data, 
             class_name,
@@ -657,8 +656,153 @@ def preprocess_audio_for_training(audio_buffer,
         audio_data_segments[class_name] = spectrograms
         logging.info(f"Created {len(spectrograms)} spectrograms for class {class_name}")
     
-    # Format data for training
-    X, y, class_mappings = format_training_data(audio_data_segments, classes)
+    return audio_data_segments
+
+
+def preprocess_audio_for_training(audio_dir,
+                                  annotations_dir,
+                                  window_duration_s=0.4,
+                                  slide_duration_s=0.2,
+                                  sr_target=8000,
+                                  n_fft=1024,
+                                  hop_length=None,
+                                  fmax=2000,
+                                  logger=None,
+                                  classes=['noise', 'anemonefish', 'biological'],
+                                  min_segment_len_seconds=0.1,
+                                  noise_padding_params=None
+                                  ):
+    """
+    Preprocess multiple audio files from directories for training by aggregating spectrograms across all files.
+    
+    This function processes all .wav files in the audio directory that have matching .txt annotation files
+    in the annotations directory. Files are matched by identical basenames (e.g., recording1.wav → recording1.txt).
+    
+    Pipeline:
+    1. List all .wav files in audio_dir (excluding hidden files)
+    2. For each audio file with a matching annotation file:
+       a. Process the file pair using process_single_audio_file_for_training()
+       b. Accumulate spectrograms by class across all files
+    3. Format all accumulated data into training-ready arrays with one-hot encoded labels
+    
+    Directory Structure Expected:
+    - audio_dir/: Contains .wav files (e.g., recording1.wav, recording2.wav, ...)
+    - annotations_dir/: Contains .txt files (e.g., recording1.txt, recording2.txt, ...)
+    
+    Example:
+        If file1 has ClassA=10 specs, ClassB=5 specs and file2 has ClassB=15 specs, ClassC=10 specs,
+        the result will contain: ClassA=10, ClassB=20, ClassC=10 total spectrograms.
+    
+    Args:
+        audio_dir: Directory path containing .wav audio files
+        annotations_dir: Directory path containing .txt annotation files (Audacity label format)
+        window_duration_s: Window size in seconds (default 0.4)
+        slide_duration_s: Stride between windows in seconds (default 0.2)
+        sr_target: Target sample rate in Hz (default 8000)
+        n_fft: FFT size for spectrogram (default 1024)
+        hop_length: STFT hop length (default n_fft//4)
+        fmax: Maximum frequency for spectrogram (default 2000)
+        logger: Logger instance
+        classes: List of class names (default ['noise', 'anemonefish', 'biological'])
+        min_segment_len_seconds: Minimum segment duration (default 0.1)
+        noise_padding_params: Dict with noise padding parameters:
+            - min_duration_s: min duration for shortened noise (default 0.1)
+            - max_duration_s: max duration for shortened noise (default 0.35)
+            - padding_ratio: proportion of noise windows to shorten (default 0.3)
+    
+    Returns:
+        tuple: (X, y, class_mappings) where:
+            - X: numpy array of shape (N, freq_bins, time_frames) containing all spectrograms from all files
+            - y: numpy array of shape (N, num_classes) containing one-hot encoded labels
+            - class_mappings: dict mapping class indices to class names {0: 'noise', 1: 'anemonefish', ...}
+            
+    Notes:
+        - Files without matching annotations are skipped with a warning
+        - Files that fail to process are skipped with an error log
+        - Empty directories return empty arrays
+    """
+    if hop_length is None:
+        hop_length = n_fft // 4 # Default hop length is 1/4 of n_fft
+    
+    # 1. List all .wav files from audio_dir (exclude hidden/macOS files starting with .)
+    audio_files = [f for f in os.listdir(audio_dir) 
+                   if f.endswith('.wav') and not f.startswith('.')]
+    audio_files.sort()  # Sort for consistent ordering
+    
+    logging.info(f"Found {len(audio_files)} audio files in {audio_dir}")
+    
+    if not audio_files:
+        logging.warning("No .wav files found in audio directory")
+        return np.array([]), np.array([]), {}
+    
+    # Initialize accumulator dict for all files
+    accumulated_spectrograms = {class_name: [] for class_name in classes}
+    
+    # 2. Process each audio file with its matching annotation
+    processed_count = 0
+    skipped_count = 0
+    
+    for audio_file in audio_files:
+        audio_path = os.path.join(audio_dir, audio_file)
+        
+        # Match by identical basename: audio1.wav -> audio1.txt
+        basename = os.path.splitext(audio_file)[0]
+        annotation_path = os.path.join(annotations_dir, f"{basename}.txt")
+        
+        if not os.path.exists(annotation_path):
+            logging.warning(f"No annotation found for {audio_file}, skipping")
+            skipped_count += 1
+            continue
+        
+        logging.info(f"Processing file pair: {audio_file} + {basename}.txt")
+        
+        # Process this audio+annotation pair
+        try:
+            file_spectrograms = process_single_audio_file_for_training(
+                audio_path, annotation_path, 
+                window_duration_s, slide_duration_s, sr_target,
+                n_fft, hop_length, fmax, classes,
+                min_segment_len_seconds, noise_padding_params
+            )
+            
+            # Accumulate spectrograms by class across all files
+            for class_name, specs in file_spectrograms.items():
+                accumulated_spectrograms[class_name].extend(specs)
+            
+            # Log statistics for this file
+            file_total = sum(len(specs) for specs in file_spectrograms.values())
+            logging.info(f"Processed {audio_file}: added {file_total} spectrograms")
+            for class_name, specs in file_spectrograms.items():
+                if specs:
+                    logging.info(f"  - {class_name}: {len(specs)} spectrograms")
+            
+            processed_count += 1
+            
+        except Exception as e:
+            logging.error(f"Error processing {audio_file}: {str(e)}")
+            skipped_count += 1
+            continue
+    
+    # Log final statistics
+    logging.info(f"\n=== Processing Complete ===")
+    logging.info(f"Processed: {processed_count} file pairs")
+    logging.info(f"Skipped: {skipped_count} files")
+    
+    # Log accumulated spectrograms per class
+    total_spectrograms = 0
+    for class_name in classes:
+        count = len(accumulated_spectrograms[class_name])
+        total_spectrograms += count
+        logging.info(f"{class_name}: {count} total spectrograms")
+    logging.info(f"Total spectrograms: {total_spectrograms}")
+    
+    # 3. Format all accumulated data into training arrays
+    X, y, class_mappings = format_training_data(accumulated_spectrograms, classes)
+
+    # Add channel dimension and transpose for Conv2D layers (batch, time, freq) -> (batch, freq, time, 1)
+    X = np.transpose(X, (0, 2, 1))
+    X = np.expand_dims(X, axis=-1)
+    logging.info(f"X shape after adding channel dimension and transposing for Conv2D layers: {X.shape}")
     return X, y, class_mappings
 
 def preprocess_audio_for_inference(audio_buffer, 
@@ -706,7 +850,7 @@ def preprocess_audio_for_inference(audio_buffer,
     spectrograms = []
     for window in windows:
         spec = create_spectrogram(window, n_fft=n_fft, 
-                                  hop_length=hop_length, fmax=fmax, sr_target=sr_target)
+                                  hop_length=hop_length, fmax=fmax, sr_target=sr_target, normalize=True)
         spectrograms.append(spec)
     # Stack into array: (num_windows, freq_bins, time_frames)
     spectrograms = np.array(spectrograms)

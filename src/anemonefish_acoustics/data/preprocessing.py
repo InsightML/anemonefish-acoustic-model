@@ -360,6 +360,206 @@ def create_spectrogram(audio_data, sr_target=8000, n_fft=512, hop_length=256, fm
     return S_db
 
 
+def pad_segment_to_window_size(audio_segment, window_samples):
+    """
+    Pads an audio segment with zeros to match the window size if it's shorter.
+    Used for anemonefish/biological classes when segments are shorter than the window.
+    
+    Args:
+        audio_segment (numpy.ndarray): Audio segment data
+        window_samples (int): Target window size in samples
+    
+    Returns:
+        numpy.ndarray: Padded audio segment of length window_samples
+    """
+    if len(audio_segment) >= window_samples:
+        return audio_segment[:window_samples]
+    
+    # Calculate padding needed
+    num_padding_samples = window_samples - len(audio_segment)
+    
+    # Pad with zeros at the end
+    padded_segment = np.pad(audio_segment, (0, num_padding_samples), 'constant', constant_values=0.0)
+    
+    return padded_segment
+
+
+def randomly_shorten_and_pad_segment(audio_segment, window_samples, sample_rate, 
+                                   min_duration_s=0.1, max_duration_s=0.35,
+                                   padding_ratio=0.3):
+    """
+    Randomly shortens and pads noise segments to balance the dataset and prevent
+    duration-based bias. Applied to a proportion of noise windows.
+    
+    Args:
+        audio_segment (numpy.ndarray): Audio segment data
+        window_samples (int): Target window size in samples
+        sample_rate (int): Sample rate in Hz
+        min_duration_s (float): Minimum duration for shortened segments
+        max_duration_s (float): Maximum duration for shortened segments
+        padding_ratio (float): Proportion of segments to apply shortening to
+    
+    Returns:
+        tuple: (processed_segment, was_padded) - audio data and whether padding was applied
+    """
+    import random
+    
+    # Only apply to a proportion of segments
+    if random.random() > padding_ratio:
+        return audio_segment[:window_samples], False
+    
+    # Random duration within range
+    random_duration = random.uniform(min_duration_s, min(max_duration_s, len(audio_segment) / sample_rate))
+    random_samples = int(random_duration * sample_rate)
+    
+    # Truncate to random duration
+    shortened_segment = audio_segment[:random_samples]
+    
+    # Pad to window size
+    padded_segment = pad_segment_to_window_size(shortened_segment, window_samples)
+    
+    return padded_segment, True
+
+
+def process_segments_to_spectrograms(segments_audio_data, class_name, 
+                                   window_duration_s, slide_duration_s, sample_rate,
+                                   n_fft, hop_length, fmax, sr_target,
+                                   noise_padding_params=None):
+    """
+    Process audio segments into spectrograms with appropriate padding based on class.
+    
+    Args:
+        segments_audio_data (list): List of audio segments (numpy arrays)
+        class_name (str): Name of the class being processed
+        window_duration_s (float): Window size in seconds
+        slide_duration_s (float): Slide/hop size in seconds
+        sample_rate (int): Sample rate of audio data
+        n_fft (int): FFT size for spectrogram
+        hop_length (int): Hop length for STFT
+        fmax (int): Maximum frequency for spectrogram
+        sr_target (int): Target sample rate
+        noise_padding_params (dict): Parameters for noise padding (min_duration, max_duration, ratio)
+    
+    Returns:
+        list: List of spectrograms (numpy arrays)
+    """
+    window_samples = int(window_duration_s * sample_rate)
+    spectrograms = []
+    
+    # Default noise padding parameters if not provided
+    if noise_padding_params is None:
+        noise_padding_params = {
+            'min_duration_s': 0.1,
+            'max_duration_s': 0.35,
+            'padding_ratio': 0.3
+        }
+    
+    for segment in segments_audio_data:
+        segment_duration_s = len(segment) / sample_rate
+        
+        # Handle short segments based on class
+        if segment_duration_s < window_duration_s:
+            if class_name != 'noise':
+                # For anemonefish/biological: pad to window size
+                padded_segment = pad_segment_to_window_size(segment, window_samples)
+                # Convert padded segment to spectrogram
+                spec = create_spectrogram(padded_segment, sr_target=sr_target, 
+                                        n_fft=n_fft, hop_length=hop_length, fmax=fmax)
+                spectrograms.append(spec)
+            else:
+                # For noise: use sliding window even on short segments
+                # Extract what windows we can get
+                windows = extract_windows(segment, window_duration_s, slide_duration_s, sample_rate)
+                for window in windows:
+                    spec = create_spectrogram(window, sr_target=sr_target,
+                                            n_fft=n_fft, hop_length=hop_length, fmax=fmax)
+                    spectrograms.append(spec)
+        else:
+            # Regular sliding window extraction for segments >= window size
+            windows = extract_windows(segment, window_duration_s, slide_duration_s, sample_rate)
+            
+            # For noise class, apply random shortening to some windows
+            if class_name == 'noise':
+                for window in windows:
+                    processed_window, was_padded = randomly_shorten_and_pad_segment(
+                        window, window_samples, sample_rate,
+                        min_duration_s=noise_padding_params['min_duration_s'],
+                        max_duration_s=noise_padding_params['max_duration_s'],
+                        padding_ratio=noise_padding_params['padding_ratio']
+                    )
+                    spec = create_spectrogram(processed_window, sr_target=sr_target,
+                                            n_fft=n_fft, hop_length=hop_length, fmax=fmax)
+                    spectrograms.append(spec)
+            else:
+                # For other classes, just convert windows to spectrograms
+                for window in windows:
+                    spec = create_spectrogram(window, sr_target=sr_target,
+                                            n_fft=n_fft, hop_length=hop_length, fmax=fmax)
+                    spectrograms.append(spec)
+    
+    return spectrograms
+
+
+def format_training_data(audio_data_segments, classes):
+    """
+    Format segmented spectrogram data into training-ready arrays.
+    
+    Args:
+        audio_data_segments (dict): Dictionary mapping class names to lists of spectrograms
+                                   {class_name: [spectrogram1, spectrogram2, ...]}
+        classes (list): List of class names in order (e.g., ['noise', 'anemonefish', 'biological'])
+    
+    Returns:
+        tuple: (X, y, class_mappings) where:
+            - X: numpy array of shape (N, freq_bins, time_frames) containing all spectrograms
+            - y: numpy array of shape (N, num_classes) containing one-hot encoded labels
+            - class_mappings: dict mapping class indices to class names {0: 'noise', 1: 'anemonefish', ...}
+    """
+    # Initialize lists to collect data
+    X_list = []
+    y_list = []
+    
+    # Create class mappings
+    class_mappings = {i: class_name for i, class_name in enumerate(classes)}
+    class_to_index = {class_name: i for i, class_name in enumerate(classes)}
+    num_classes = len(classes)
+    
+    # Process each class
+    for class_name in classes:
+        if class_name not in audio_data_segments:
+            logging.warning(f"Class '{class_name}' not found in audio_data_segments")
+            continue
+            
+        spectrograms = audio_data_segments[class_name]
+        class_index = class_to_index[class_name]
+        
+        # Create one-hot encoded label for this class
+        one_hot = np.zeros(num_classes)
+        one_hot[class_index] = 1
+        
+        # Add spectrograms and labels
+        for spectrogram in spectrograms:
+            X_list.append(spectrogram)
+            y_list.append(one_hot)
+    
+    # Convert to numpy arrays
+    if X_list:
+        X = np.array(X_list)
+        y = np.array(y_list)
+        
+        logging.info(f"Formatted training data: X shape = {X.shape}, y shape = {y.shape}")
+        for i, class_name in enumerate(classes):
+            count = np.sum(y[:, i])
+            logging.info(f"  Class '{class_name}' (index {i}): {int(count)} samples")
+    else:
+        # Return empty arrays if no data
+        X = np.array([])
+        y = np.array([])
+        logging.warning("No training data to format")
+    
+    return X, y, class_mappings
+
+
 def preprocess_audio_for_training(audio_buffer,
                                   classes_path,
                                   window_duration_s=0.4,
@@ -370,14 +570,44 @@ def preprocess_audio_for_training(audio_buffer,
                                   fmax=2000,
                                   logger=None,
                                   classes=['noise', 'anemonefish', 'biological'],
-                                  min_segment_len_seconds=0.1
+                                  min_segment_len_seconds=0.1,
+                                  noise_padding_params=None
                                   ):
     """
-    1. Read audio file with sf and load classes data from txt
-    2. Split audio file into classes and noise segments
-    3. Segment audio file data by classes and noise
-    3. Extract windows from segments
-    4. Create spectrogams from windows
+    Preprocess audio file for training by segmenting based on annotations and converting to spectrograms.
+    
+    Pipeline:
+    1. Read audio file and load class annotations from Audacity label file
+    2. Split audio into labeled segments (by class) and noise segments (unlabeled regions)
+    3. Segment audio data by classes
+    4. Extract windows from segments with padding logic:
+       - For anemonefish/biological: pad short segments to window size
+       - For noise: apply random shortening and padding to some windows
+    5. Create spectrograms from windows
+    6. Format into training-ready arrays with one-hot encoded labels
+    
+    Args:
+        audio_buffer: File path or buffer containing audio data
+        classes_path: Path to Audacity label file with annotations
+        window_duration_s: Window size in seconds (default 0.4)
+        slide_duration_s: Stride between windows in seconds (default 0.2)
+        sr_target: Target sample rate in Hz (default 8000)
+        n_fft: FFT size for spectrogram (default 1024)
+        hop_length: STFT hop length (default n_fft//4)
+        fmax: Maximum frequency for spectrogram (default 2000)
+        logger: Logger instance
+        classes: List of class names (default ['noise', 'anemonefish', 'biological'])
+        min_segment_len_seconds: Minimum segment duration (default 0.1)
+        noise_padding_params: Dict with noise padding parameters:
+            - min_duration_s: min duration for shortened noise (default 0.1)
+            - max_duration_s: max duration for shortened noise (default 0.35)
+            - padding_ratio: proportion of noise windows to shorten (default 0.3)
+    
+    Returns:
+        tuple: (X, y, class_mappings) where:
+            - X: numpy array of shape (N, freq_bins, time_frames) containing all spectrograms
+            - y: numpy array of shape (N, num_classes) containing one-hot encoded labels
+            - class_mappings: dict mapping class indices to class names {0: 'noise', 1: 'anemonefish', ...}
     """
     if hop_length is None:
         hop_length = n_fft // 4 # Default hop length is 1/4 of n_fft
@@ -393,7 +623,8 @@ def preprocess_audio_for_training(audio_buffer,
     classes_segments = parse_audacity_labels(classes_path)
 
     # 2. Split audio file into classes and noise segments
-    noise_segments = get_noise_segments(audio_data.shape[0], classes_segments, min_segment_len_seconds)
+    total_duration_seconds = len(audio_data) / sample_rate
+    noise_segments = get_noise_segments(total_duration_seconds, classes_segments, min_segment_len_seconds)
     classes_segments_dict = classify_labeled_segments(classes_segments, classes)
 
     # Append noise class to the dict
@@ -405,17 +636,27 @@ def preprocess_audio_for_training(audio_buffer,
     for class_name, segments in classes_segments_dict.items():
         segments_audio_data = segment_audio_data(audio_data, segments, sample_rate)
         logging.info(f"Segmented {len(segments_audio_data)} segments for class {class_name}")
-        logging.info(f"Extracting windows for each segments for class {class_name}")
-        windows = []
-        spectrograms = []
-        for segment in segments_audio_data:
-            windows.append(extract_windows(segment, window_duration_s, slide_duration_s, sample_rate))
-        for window in windows:
-            spectrograms.append(create_spectrogram(window, n_fft=n_fft, hop_length=hop_length, fmax=fmax, sr_target=sr_target))
+        
+        # Process segments to spectrograms using the new helper function
+        spectrograms = process_segments_to_spectrograms(
+            segments_audio_data, 
+            class_name,
+            window_duration_s, 
+            slide_duration_s, 
+            sample_rate,
+            n_fft, 
+            hop_length, 
+            fmax, 
+            sr_target,
+            noise_padding_params=noise_padding_params
+        )
+        
         audio_data_segments[class_name] = spectrograms
-    
         logging.info(f"Created {len(spectrograms)} spectrograms for class {class_name}")
-    return training_data, audio_data_segments
+    
+    # Format data for training
+    X, y, class_mappings = format_training_data(audio_data_segments, classes)
+    return X, y, class_mappings
 
 def preprocess_audio_for_inference(audio_buffer, 
                                    window_duration_s=0.4,

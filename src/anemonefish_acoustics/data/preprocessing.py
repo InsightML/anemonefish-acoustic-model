@@ -41,7 +41,14 @@ Stride (or Hop or Slide):
         Window 0: samples 0-3199    (0.0s - 0.4s)
         Window 1: samples 1600-4799 (0.2s - 0.6s)  ← moved forward 1600 samples
         Window 2: samples 3200-6399 (0.4s - 0.8s)  ← moved forward 1600 samples
-    
+
+Training Data:
+    | Segment Type | Segment Duration | Action |
+    |--------------|------------------|--------|
+    | **Anemonefish/Biological** | < 0.4s | ✅ Pad with zeros to 0.4s → Extract 1 window |
+    | **Anemonefish/Biological** | ≥ 0.4s | ✅ Extract multiple windows with sliding window |
+    | **Noise** | < 0.4s | ✅ Skip (plenty of data from longer segments) |
+    | **Noise** | ≥ 0.4s | ✅ Extract multiple windows + random shortening/padding |
 
 === SPECTROGRAM CONCEPTS ===
 
@@ -467,13 +474,9 @@ def process_segments_to_spectrograms(segments_audio_data, class_name,
                                         n_fft=n_fft, hop_length=hop_length, fmax=fmax)
                 spectrograms.append(spec)
             else:
-                # For noise: use sliding window even on short segments
-                # Extract what windows we can get
-                windows = extract_windows(segment, window_duration_s, slide_duration_s, sample_rate)
-                for window in windows:
-                    spec = create_spectrogram(window, sr_target=sr_target,
-                                            n_fft=n_fft, hop_length=hop_length, fmax=fmax)
-                    spectrograms.append(spec)
+                # For noise: skip short segments (can't extract windows from them)
+                # This is fine since there's plenty of noise data from longer segments
+                continue
         else:
             # Regular sliding window extraction for segments >= window size
             windows = extract_windows(segment, window_duration_s, slide_duration_s, sample_rate)

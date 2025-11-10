@@ -4,9 +4,9 @@ import base64
 import soundfile as sf
 import io
 
-from src.anemonefish_acoustics.data import preprocess_audio_for_inference, postprocess_prediction
-from src.anemonefish_acoustics.models.utils import load_model
-from src.anemonefish_acoustics.utils.logger import get_logger
+from anemonefish_acoustics.data import preprocess_audio_for_inference, postprocess_prediction
+from anemonefish_acoustics.models.utils import load_model
+from anemonefish_acoustics.utils.logger import get_logger
 
 logger = get_logger(__name__)
 

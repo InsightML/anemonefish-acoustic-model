@@ -1,0 +1,32 @@
+# Ignore macOS specific files
+.DS_Store
+._*
+
+# Ignore Git directory
+.git
+.gitignore
+.gitattributes
+
+# Ignore Python specific files and directories
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+anemonefish_acoustics.egg-info/
+requirements_local.txt
+
+# Ignore virtual environment folders
+venv/
+.venv/
+anemonefish_model_dev/
+
+# Ignore large data and log directories not needed in the image
+data/
+logs/
+notebooks/
+archive/
+results/
+
+# Ignore Dockerfile itself
+Dockerfile
+.dockerignore

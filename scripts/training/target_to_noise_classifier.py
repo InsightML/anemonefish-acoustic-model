@@ -10,6 +10,7 @@
 
 # %%
 import os
+import tempfile
 from sklearn.utils import class_weight
 import numpy as np
 import matplotlib.pyplot as plt
@@ -30,6 +31,8 @@ sys.path.append('/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics/src')
 
 from anemonefish_acoustics.utils.logger import get_logger
 from anemonefish_acoustics.utils.utils import pretty_path
+from anemonefish_acoustics.models.hypermodels import TargetToNoiseHyperModel
+from anemonefish_acoustics.data.preprocessing import preprocess_audio_for_training
 
 # Setup logging - always use get_logger to ensure proper handlers
 logging = get_logger(name='binary_classifier', workspace_root='/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics')
@@ -46,6 +49,7 @@ else:
 
 # %% [markdown]
 # ## 2. Configuration
+
 
 # %%
 # --- Configuration ---
@@ -64,10 +68,16 @@ with open(CONFIG_PATH, 'r') as f:
 # Extract configuration values
 WORKSPACE_BASE_PATH = Path(config['workspace_base_path'])
 DATASET_VERSION = config['dataset_version']
+DATA_SITE = config['raw_data_site']
 CLASSES = config['classes']
+ANNOTATION_VERSION = config['annotation_version']
+RAW_DATA_DIR = os.path.join(WORKSPACE_BASE_PATH, 'data', '1_raw', DATA_SITE)
 DATA_DIR = os.path.join(WORKSPACE_BASE_PATH, 'data', '2_training_datasets', DATASET_VERSION)
 
-MODEL_INPUT_SIZE = [config['spectrogram']['height_pixels'], config['spectrogram']['width_pixels'], 3]
+ANNOTATION_DIR = os.path.join(RAW_DATA_DIR, ANNOTATION_VERSION)
+AUDIO_DIR = os.path.join(RAW_DATA_DIR, 'audio')
+
+MODEL_INPUT_SIZE = [config['spectrogram']['height_pixels'], config['spectrogram']['width_pixels'], 1]
 EPOCHS = config['epochs']
 TUNER_EPOCHS = config['tuner_epochs']
 MAX_TRIALS = config['max_trials']
@@ -81,55 +91,25 @@ os.makedirs(MODEL_SAVE_PATH, exist_ok=True)
 os.makedirs(LOGS_DIR, exist_ok=True)
 os.makedirs(TUNER_LOGS_DIR, exist_ok=True)
 
+# Preprocessing parameters
+WINDOW_SIZE_SECONDS = config['audio_processing']['window_size_seconds']
+SLIDE_SIZE_SECONDS = config['audio_processing']['slide_size_seconds']
+N_FFT = config['spectrogram']['n_fft']
+HOP_LENGTH = config['spectrogram']['hop_length']
+SR_TARGET = config['spectrogram']['sr_target']
+
+# Noise padding parameters
+NOISE_PADDING_CONFIG = {
+    "min_duration_s": config['noise_padding']['min_duration_seconds'],
+    "max_duration_s": config['noise_padding']['max_duration_seconds'],
+    "padding_ratio": config['noise_padding']['padding_ratio']
+}
+
 # Logs
 logging.info(f"TensorBoard logs will be saved to: {pretty_path(LOGS_DIR)}")
 logging.info(f"Tuner logs will be saved to: {pretty_path(TUNER_LOGS_DIR)}")
 logging.info(f"Model checkpoints, config, and training results will be saved to: {pretty_path(MODEL_SAVE_PATH, num_dirs=2)}")
 
-
-# %%
-# # --- Configuration --- DEPRECIATED
-
-# # Paths - Adjust these to your actual data locations
-# BASE_DATA_PATH = '/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics/data/2_training_datasets/v1_binary_class_labels' # Base directory for spectrograms
-
-# # Automatically discover class directories
-# class_dirs = [d for d in os.listdir(BASE_DATA_PATH) if os.path.isdir(os.path.join(BASE_DATA_PATH, d)) and not d.startswith('.')]
-# class_paths = {class_name: os.path.join(BASE_DATA_PATH, class_name) for class_name in class_dirs}
-
-# LOGS_DIR = '/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics/logs/experiments/binary_classifier_spectrogram'
-# MODEL_SAVE_PATH = '/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics/models/binary_classifier/'
-
-# # Image and Model Parameters
-# IMG_WIDTH = 256  # Assuming square spectrograms, adjust if needed
-# IMG_HEIGHT = 256 # Assuming square spectrograms, adjust if needed
-# IMG_CHANNELS = 3 # Typically RGB, even if spectrograms are grayscale, they are often loaded/processed as RGB
-# MODEL_INPUT_SIZE = (IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS)
-
-# # Training Hyperparameters
-# BATCH_SIZE = 16
-# EPOCHS = 50 # Start with a moderate number, can be adjusted
-# LEARNING_RATE = 1e-3
-# VALIDATION_SPLIT = 0.1 # 10% of training data for validation
-# TEST_SPLIT = 0.1       # 10% of total data for final testing
-
-# # Labels
-# CLASS_NAMES = ['noise', 'anemonefish']
-# LABEL_MAP = {'noise': 0, 'anemonefish': 1}
-
-# logging.info("Configuration Loaded.")
-# logging.info(f"Anemonefish Spectrogram Path: {ANEMONEFISH_PATH}")
-# logging.info(f"Noise Spectrogram Path: {NOISE_PATH}")
-# logging.info(f"Model Input Size: {MODEL_INPUT_SIZE}")
-# logging.info(f"Batch Size: {BATCH_SIZE}")
-
-# # Check if spectrogram directories exist
-# if not os.path.isdir(ANEMONEFISH_PATH):
-#     logging.warning(f"Anemonefish spectrogram directory not found: {ANEMONEFISH_PATH}")
-#     logging.warning("Please ensure your anemonefish spectrograms are in the correct path.")
-# if not os.path.isdir(NOISE_PATH):
-#     logging.warning(f"Noise spectrogram directory not found: {NOISE_PATH}")
-#     logging.warning("Please ensure your noise spectrograms are in the correct path.")
 
 # %% [markdown]
 # ## 3. Train Val split & Class weight
@@ -143,87 +123,49 @@ logging.info(f"Model checkpoints, config, and training results will be saved to:
 # 1. using CLASSES and DATA_DIR identify spectogram directory and list image paths for each class
 # 2. map X and Y dataset. Load X by loading all the images into an array. train_test_split
 
+# %% [markdown]
+# ### 3b: Raw spectograms
+
 # %%
-# Load image file paths and corresponding class labels from directory structure
+X, y, class_mappings = preprocess_audio_for_training(
+    audio_dir=AUDIO_DIR,
+    annotations_dir=ANNOTATION_DIR,
+    window_duration_s=WINDOW_SIZE_SECONDS,
+    slide_duration_s=SLIDE_SIZE_SECONDS,
+    sr_target=SR_TARGET,
+    n_fft=N_FFT,
+    hop_length=None,
+    logger=logging,
+    classes=CLASSES,
+    min_segment_len_seconds=0.1,
+    noise_padding_params=NOISE_PADDING_CONFIG
+)
 
-# Initialize output arrays
-X_paths = []
-Y_labels = []
-Y_labels_for_weights = []  # For class weight calculation
-
-# Common image extensions
-image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
-
-# Scan directory for subdirectories
-try:
-    items = os.listdir(DATA_DIR)
-except OSError as e:
-    logging.error(f"Could not read directory {DATA_DIR}: {e}")
-    items = []
-
-# Filter out hidden files and get only directories
-directories = [item for item in items 
-              if not item.startswith('.') and 
-              os.path.isdir(os.path.join(DATA_DIR, item))]
-
-# Process each directory that matches a class name
-for directory in directories:
-    if directory in CLASSES:
-        class_index = CLASSES.index(directory)
-        class_dir_path = os.path.join(DATA_DIR, directory)
-        
-        # Create one-hot encoded label
-        one_hot_label = [0] * len(CLASSES)
-        one_hot_label[class_index] = 1
-        
-        try:
-            # Get all files in the class directory
-            files = os.listdir(class_dir_path)
-            
-            # Filter for image files (exclude hidden/system files)
-            image_files = [f for f in files 
-                          if not f.startswith('.') and 
-                          not f.startswith('_') and
-                          os.path.splitext(f.lower())[1] in image_extensions]
-            
-            # Add file paths and labels
-            for image_file in image_files:
-                full_path = os.path.join(class_dir_path, image_file)
-                X_paths.append(full_path)
-                Y_labels.append(one_hot_label)  # One-hot encoded for training
-                Y_labels_for_weights.append(class_index)  # Class index for weight calculation
-                
-            logging.info(f"Found {len(image_files)} images in class '{directory}' (index {class_index}, one-hot: {one_hot_label})")
-            
-        except OSError as e:
-            logging.warning(f"Could not read class directory {class_dir_path}: {e}")
-            continue
-    else:
-        logging.info(f"Directory '{directory}' not in classes list, skipping")
-
-logging.info(f"Total files loaded: {len(X_paths)}")
+# %%
+# Convert one-hot encoded labels back to class indices
+y_class_indices = np.argmax(y, axis=1)  # Converts [0,1,0] -> 1, [1,0,0] -> 0, etc.
 
 # Calculate class weights for balanced training 
 class_weights_array = class_weight.compute_class_weight(
     class_weight='balanced',
-    classes=np.unique(Y_labels_for_weights),
-    y=np.array(Y_labels_for_weights))
+    classes=np.unique(y_class_indices),
+    y=y_class_indices)
 
 # Convert array to dictionary for tf training
 class_weights_dict = {i: class_weights_array[i] for i in range(len(class_weights_array))}
 
-logging.info(f"Class weights: {class_weights_dict}")
-
-# Assign to variables for consistency with existing code
-X_path = X_paths
+# Log the class weights
+print("Class weights:")
+for class_idx, weight in class_weights_dict.items():
+    class_name = class_mappings[class_idx]
+    print(f"  {class_name} (index {class_idx}): {weight:.4f}")
 
 # %%
 # Split X and Y into train, val, test
-X_train_paths, X_val_paths, Y_train, Y_val = train_test_split(X_path, Y_labels, test_size=config['validation_size'], random_state=config['seed'], stratify=Y_labels)
+X_train, X_val, Y_train, Y_val = train_test_split(X, y, test_size=config['validation_size'], random_state=config['seed'], stratify=y)
 
-logging.info(f"X_train: {len(X_train_paths)}")
-logging.info(f"X_val: {len(X_val_paths)}")
-
+logging.info(f"X_train: {X_train.shape}")
+logging.info(f"X_val: {X_val.shape}")
 
 # %% [markdown]
 # ## 4. Create tf.data Datasets
@@ -231,34 +173,8 @@ logging.info(f"X_val: {len(X_val_paths)}")
 # Create optimized tf.data datasets using the shared preprocessing module and calculate class weights for balanced training.
 
 # %%
-def load_and_preprocess_image(path, label):
-    """Load and preprocess a single image."""
-    # Read file
-    image = tf.io.read_file(path)
-    
-    # Decode PNG to RGB tensor
-    image = tf.image.decode_png(image, channels=3)
-    
-    # Convert to float32 and normalize to [0, 1]
-    image = tf.cast(image, tf.float32) / 255.0
-    
-    # Ensure correct shape
-    image = tf.ensure_shape(image, [256, 256, 3])
-    
-    return image, label
-
-# %%
-def create_tf_dataset(X, Y):
-    tf_dataset = tf.data.Dataset.from_tensor_slices((X, Y))
-    tf_dataset = tf_dataset.map(
-        load_and_preprocess_image,
-        num_parallel_calls=tf.data.AUTOTUNE
-    )
-    return tf_dataset
-
-# %%
-train_dataset = (create_tf_dataset(X_train_paths, Y_train)
-                   .shuffle(buffer_size=len(X_train_paths),
+train_dataset = (tf.data.Dataset.from_tensor_slices((X_train, Y_train))
+                   .shuffle(buffer_size=len(X_train),
                            seed=config['seed'],
                            reshuffle_each_iteration=True)
                    .batch(config['batch_size'])
@@ -266,7 +182,7 @@ train_dataset = (create_tf_dataset(X_train_paths, Y_train)
                    .prefetch(tf.data.AUTOTUNE))
 
 
-val_dataset = (create_tf_dataset(X_val_paths, Y_val)
+val_dataset = (tf.data.Dataset.from_tensor_slices((X_val, Y_val))
                  .batch(config['batch_size'])
                  .cache()
                  .prefetch(tf.data.AUTOTUNE))
@@ -277,13 +193,13 @@ if train_dataset is not None:
     logging.info("Testing tf.data pipeline...")
     try:
         sample_batch = next(iter(train_dataset.take(1)))
-        images, labels = sample_batch
+        spectrograms, labels = sample_batch
         logging.info("✓ Successfully loaded batch:")
-        logging.info(f"  - Images shape: {images.shape}")
-        logging.info(f"  - Labels shape: {labels.shape}")
-        logging.info(f"  - Image value range: [{tf.reduce_min(images):.3f}, {tf.reduce_max(images):.3f}]")
-        logging.info(f"  - Images dtype: {images.dtype}")
-        logging.info(f"  - Labels dtype: {labels.dtype}")
+        logging.info(f"  - X shape: {spectrograms.shape}")
+        logging.info(f"  - Y shape: {labels.shape}")
+        logging.info(f"  - X value range: [{tf.reduce_min(spectrograms):.3f}, {tf.reduce_max(spectrograms):.3f}]")
+        logging.info(f"  - X dtype: {spectrograms.dtype}")
+        logging.info(f"  - Y dtype: {labels.dtype}")
     except Exception as e:
         logging.error(f"✗ Error testing pipeline: {e}")
 
@@ -315,7 +231,7 @@ os.makedirs(run_checkpoint_dir, exist_ok=True)
 best_model_path = os.path.join(run_checkpoint_dir, "best_model.keras") # Using .keras format
 
 # Callbacks
-tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=run_log_dir, histogram_freq=1)
+tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=run_log_dir, histogram_freq=0)
 
 model_checkpoint_callback = ModelCheckpoint(
     filepath=best_model_path,
@@ -355,60 +271,20 @@ logging.info(f"Model checkpoints will be saved to: {run_checkpoint_dir}")
 logging.info(f"Best model will be saved as: {best_model_path}")
 
 # %% [markdown]
-# ## 6. Define CNN Model
-# 
-# We'll define a simple Convolutional Neural Network (CNN) suitable for binary image classification.
-# The architecture will consist of a few convolutional blocks followed by dense layers.
-# - Convolutional layers for feature extraction.
-# - MaxPooling layers for down-sampling.
-# - BatchNormalization for stabilizing learning.
-# - Dropout for regularization.
-# - A final Dense layer with a sigmoid activation for binary classification.
-
-# %%
-from keras.metrics import Precision, Recall, F1Score
-
-NUM_CNN_BLOCKS = 4
-FILTERS = [32, 64, 128, 256]
-
-def build_model_target_to_noise(hp):
-    model = Sequential()
-    model.add(Input(shape=MODEL_INPUT_SIZE))
-    if hp.Choice('activation', ['relu', 'sigmoid']) == 'relu':
-        activation = 'relu'
-    else:
-        activation = 'sigmoid'
-    for cnn_block in range(NUM_CNN_BLOCKS):
-        for i in range(hp.Int('cnn_depth', min_value=1, max_value=6)):
-            model.add(Conv2D(FILTERS[cnn_block], (3, 3), padding='same', activation=activation))
-        
-        model.add(BatchNormalization())
-        model.add(MaxPooling2D(pool_size=(2, 2)))
-
-    model.add(Flatten())
-    model.add(Dense(128, activation=activation))
-    model.add(BatchNormalization())
-    if hp.Boolean('use_dropout'):
-        model.add(Dropout(hp.Float('dropout_rate', min_value=0.1, max_value=0.5, step=0.1)))
-    model.add(Dense(len(CLASSES), activation='softmax'))
-
-    learning_rate = hp.Float('learning_rate', min_value=1e-4, max_value=1e-2, sampling='log')
-    optimizer = Adam(learning_rate=learning_rate)
-    model.compile(
-        optimizer=optimizer,
-        loss='categorical_crossentropy',
-        metrics=[
-            'accuracy',
-        ]
-    )
-    return model
+# ## 6 train and tune model
 
 # %% [markdown]
 # ### 6.1 Start the search (tuner)
 
 # %%
+# Instantiate the hypermodel
+hypermodel = TargetToNoiseHyperModel(input_shape=MODEL_INPUT_SIZE, num_classes=len(CLASSES))
+logging.info(f"Hypermodel input shape: {MODEL_INPUT_SIZE},  X shape: {spectrograms.shape}")
+
+# %%
+# Instantiate the tuner
 tuner = keras_tuner.RandomSearch(
-    hypermodel=build_model_target_to_noise,
+    hypermodel=hypermodel,
     objective='val_loss',
     max_trials=MAX_TRIALS,
     executions_per_trial=EXECUTIONS_PER_TRIAL,
@@ -437,9 +313,17 @@ tuner.results_summary()
 
 # %%
 best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
-model = build_model_target_to_noise(best_hps)
+# Use the hypermodel instance to build the model with best hyperparameters
+model = hypermodel.build(best_hps)
 
-history = model.fit(train_dataset, epochs=EPOCHS, validation_data=val_dataset)
+# Train with the full epoch count
+history = model.fit(
+    train_dataset, 
+    epochs=EPOCHS, 
+    validation_data=val_dataset, 
+    callbacks=callbacks_list,
+    class_weight=class_weights_dict
+)
 
 # %% [markdown]
 # ## 7 Save model

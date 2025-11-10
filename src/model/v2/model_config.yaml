@@ -1,0 +1,14 @@
+classes:
+- noise
+- anemonefish
+- biological
+epochs_trained: 57
+final_train_accuracy: 0.6667447090148926
+final_train_loss: 0.8003779053688049
+final_val_accuracy: 0.665730357170105
+final_val_loss: 0.7615985870361328
+input_shape:
+- 76
+- 256
+- 1
+num_classes: 3

@@ -42,6 +42,7 @@ def predict(body: dict):
     logger.info(f"Preprocessing audio data...")
     try:
         spectrograms = preprocess_audio_for_inference(audio_buffer, window_duration_s=0.4, slide_duration_s=0.2, sr_target=8000, n_fft=1024, hop_length=None, fmax=2000, logger=logger)
+        logger.info(f"Spectrograms shape: {spectrograms.shape}")
     except Exception as e:
         logger.exception(f"Failed to preprocess audio: {str(e)}")
         return {"error": f"Failed to preprocess audio: {str(e)}"}
@@ -60,5 +61,5 @@ def predict(body: dict):
 
     post_processed_prediction = postprocess_prediction(prediction, logger=logger)
 
-    return {"prediction": post_processed_prediction}
+    return post_processed_prediction
     

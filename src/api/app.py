@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import json
 import base64
 import soundfile as sf
@@ -12,6 +13,15 @@ logger = get_logger(__name__)
 
 
 app = FastAPI()
+
+# Allow the frontend to talk to this API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def read_root():

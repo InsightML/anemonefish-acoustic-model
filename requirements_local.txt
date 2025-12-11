@@ -1,0 +1,11 @@
+numpy>=1.26.4
+pandas>=2.2.3
+librosa>=0.10.2
+soundfile>=0.13.1
+matplotlib>=3.10.1
+scikit-learn>=1.6.1
+tqdm>=4.67.1
+
+# Apple Silicon specific dependencies
+tensorflow-macos==2.16.2
+tensorflow-metal==1.2.0 

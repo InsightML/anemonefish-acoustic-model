@@ -10,7 +10,7 @@ import json
 AUDIO_FILE_PATH = "/Volumes/InsightML/NAS/3_Lucia_Yllan/Clown_Fish_Acoustics/data/1_raw/papua_new_guines_2023/audio/20230210_000001_LL_B55_M_R_with labels.wav"
 
 # API endpoint (update this to your actual endpoint URL)
-API_URL = "http://localhost:8001/predict"
+API_URL = "https://qqccznuahn.eu-west-2.awsapprunner.com/predict"
 
 
 def load_audio_to_b64(audio_path: str) -> str:

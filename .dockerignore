@@ -30,3 +30,6 @@ results/
 # Ignore Dockerfile itself
 Dockerfile
 .dockerignore
+
+# Ignore tar files (large artifacts)
+*.tar

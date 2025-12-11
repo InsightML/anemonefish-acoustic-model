@@ -6,13 +6,36 @@ import base64
 import soundfile as sf
 import io
 import os
-import jwt
+import firebase_admin
+from firebase_admin import auth, credentials
 
 from anemonefish_acoustics.data import preprocess_audio_for_inference, postprocess_prediction
 from anemonefish_acoustics.models.utils import load_model
 from anemonefish_acoustics.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Initialize Firebase Admin SDK
+# Note: For AWS AppRunner, it's best to use environment variables for credentials
+# or a service account key file mounted or passed as base64.
+# For simplicity in this step, we'll assume the environment has GOOGLE_APPLICATION_CREDENTIALS set
+# or we initialize it without arguments (works on GCP, but on AWS needs setup).
+if not firebase_admin._apps:
+    try:
+        # Check if we have base64 encoded credentials in env var (common pattern for containers)
+        firebase_creds_b64 = os.environ.get("FIREBASE_SERVICE_ACCOUNT_BASE64")
+        if firebase_creds_b64:
+            import json
+            import base64
+            cred_json = json.loads(base64.b64decode(firebase_creds_b64))
+            cred = credentials.Certificate(cred_json)
+            firebase_admin.initialize_app(cred)
+        else:
+             # Fallback: relies on GOOGLE_APPLICATION_CREDENTIALS env var pointing to a file
+             # or implicit environment setup.
+             firebase_admin.initialize_app()
+    except Exception as e:
+        logger.error(f"Failed to initialize Firebase Admin: {e}")
 
 
 app = FastAPI()
@@ -22,31 +45,28 @@ security = HTTPBearer()
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """
-    Verifies the Supabase JWT token from the Authorization header.
-    Requires SUPABASE_JWT_SECRET environment variable to be set.
+    Verifies the Firebase ID Token from the Authorization header.
     """
     token = credentials.credentials
-    secret = os.environ.get("SUPABASE_JWT_SECRET")
     
-    if not secret:
-        logger.error("SUPABASE_JWT_SECRET environment variable not set")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Server authentication configuration error"
-        )
-
     try:
-        # Supabase uses HS256 algorithm
-        # The 'aud' claim is usually 'authenticated' for logged in users
-        payload = jwt.decode(token, secret, algorithms=["HS256"], audience="authenticated")
-        return payload
-    except jwt.ExpiredSignatureError:
+        # Verify the ID token while checking if the token is revoked.
+        decoded_token = auth.verify_id_token(token, check_revoked=True)
+        return decoded_token
+    except auth.RevokedIdTokenError:
+        logger.warning("Token revoked")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except auth.ExpiredIdTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except jwt.InvalidTokenError as e:
+    except Exception as e:
         logger.warning(f"Invalid token attempt: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
